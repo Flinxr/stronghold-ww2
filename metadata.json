@@ -1,0 +1,6 @@
+{
+  "name": "Stronghold RTS - دژ مرزنشینان",
+  "description": "A Stronghold RTS isometric strategy game featuring real-time online multiplayer lobbies, CS-style password protection, 2-4 player castle maps, customizable starting gold, player colors, and smooth sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
