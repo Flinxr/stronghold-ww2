@@ -179,6 +179,74 @@ io.on("connection", (socket: Socket) => {
     if (callback) callback({ success: true });
   });
 
+  // Rejoin ongoing game match
+  socket.on("lobby:rejoin", (data: { lobbyId: string; playerName?: string; targetPlayerId?: number }, callback?: (res: { success: boolean; selfPlayerId?: number; error?: string }) => void) => {
+    const lobby = lobbies.get(data.lobbyId);
+    if (!lobby) {
+      if (callback) callback({ success: false, error: "لابی نبرد یافت نشد یا منقضی شده است!" });
+      return;
+    }
+
+    // Determine slot to reconnect into
+    let rejoiningSlot = data.targetPlayerId;
+    let existingPlayer = lobby.players.find(p => (rejoiningSlot && p.playerId === rejoiningSlot) || (data.playerName && p.name === data.playerName));
+
+    if (existingPlayer) {
+      existingPlayer.id = socket.id;
+      if (data.playerName) existingPlayer.name = data.playerName;
+      rejoiningSlot = existingPlayer.playerId;
+    } else {
+      rejoiningSlot = getNextAvailableSlot(lobby);
+      const newPlayer: LobbyPlayer = {
+        id: socket.id,
+        name: data.playerName || `فرمانده ${rejoiningSlot}`,
+        playerId: rejoiningSlot,
+        isHost: lobby.players.length === 0,
+        isReady: true
+      };
+      lobby.players.push(newPlayer);
+      if (lobby.players.length === 1) {
+        lobby.hostId = socket.id;
+      }
+    }
+
+    socket.join(lobby.id);
+
+    // Notify caller
+    socket.emit("game:rejoined", {
+      lobby,
+      selfPlayerId: rejoiningSlot
+    });
+
+    // Notify lobby and ask host to send immediate full state sync
+    socket.to(lobby.id).emit("game:request_sync", { requesterId: socket.id });
+    io.to(lobby.id).emit("lobby:updated", lobby);
+    io.to(lobby.id).emit("game:chat_message", {
+      sender: "سیستم تاکتیکال",
+      message: `فرمانده ${data.playerName || existingPlayer?.name || 'مجدد'} با موفقیت به میدان نبرد متصل شد.`,
+      playerId: 0,
+      time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    io.emit("lobby:list", getPublicLobbies());
+    if (callback) callback({ success: true, selfPlayerId: rejoiningSlot });
+  });
+
+  // Update Player Profile / Name in Lobby
+  socket.on("lobby:update_player_name", (data: { lobbyId?: string; newName: string }) => {
+    if (!data.newName || !data.newName.trim()) return;
+    const cleanName = data.newName.trim().slice(0, 20);
+
+    lobbies.forEach(lobby => {
+      const p = lobby.players.find(player => player.id === socket.id);
+      if (p) {
+        p.name = cleanName;
+        io.to(lobby.id).emit("lobby:updated", lobby);
+      }
+    });
+    io.emit("lobby:list", getPublicLobbies());
+  });
+
   // Update Lobby Settings (Host only)
   socket.on("lobby:update_settings", (data: { lobbyId: string; name?: string; startingGold?: number; maxPlayers?: number }) => {
     const lobby = lobbies.get(data.lobbyId);

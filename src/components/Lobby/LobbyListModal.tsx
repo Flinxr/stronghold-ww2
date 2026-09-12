@@ -1,29 +1,36 @@
 import React, { useState } from 'react';
 import { PublicLobbyInfo } from '../../types';
-import { Shield, Lock, Coins, Users, RefreshCw, Plus, Play, Search, Key, X, Swords } from 'lucide-react';
+import { Shield, Lock, Coins, Users, RefreshCw, Plus, Play, Search, Key, X, Swords, User, Edit3, Check, Zap } from 'lucide-react';
 
 interface LobbyListModalProps {
   isOpen: boolean;
   lobbies: PublicLobbyInfo[];
+  playerName: string;
+  onUpdatePlayerName: (newName: string) => void;
   onRefresh: () => void;
   onCreateLobbyClick: () => void;
   onJoinLobby: (lobbyId: string, password?: string) => void;
+  onRejoinLobby: (lobbyId: string) => void;
   onPlayOffline: () => void;
 }
 
 export function LobbyListModal({
   isOpen,
   lobbies,
+  playerName,
+  onUpdatePlayerName,
   onRefresh,
   onCreateLobbyClick,
   onJoinLobby,
+  onRejoinLobby,
   onPlayOffline,
 }: LobbyListModalProps) {
   const [activeTab, setActiveTab] = useState<'online' | 'offline'>('online');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLobbyForPassword, setSelectedLobbyForPassword] = useState<PublicLobbyInfo | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(playerName);
 
   if (!isOpen) return null;
 
@@ -33,8 +40,19 @@ export function LobbyListModal({
       l.hostName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleSaveName = () => {
+    if (nameInput.trim()) {
+      onUpdatePlayerName(nameInput.trim());
+    }
+    setEditingName(false);
+  };
+
   const handleAttemptJoin = (lobby: PublicLobbyInfo) => {
-    setErrorMessage('');
+    if (lobby.status === 'in_game') {
+      onRejoinLobby(lobby.id);
+      return;
+    }
+
     if (lobby.hasPassword) {
       setSelectedLobbyForPassword(lobby);
       setPasswordInput('');
@@ -53,9 +71,9 @@ export function LobbyListModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl h-[85vh] max-h-[700px] bg-slate-900 border-2 border-amber-600/60 rounded-2xl shadow-2xl overflow-hidden font-sans dir-rtl text-right flex flex-col">
+      <div className="relative w-full max-w-4xl h-[88vh] max-h-[720px] bg-slate-900 border-2 border-amber-600/60 rounded-2xl shadow-2xl overflow-hidden font-sans dir-rtl text-right flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-950 border-b border-amber-600/30 shrink-0">
+        <div className="flex items-center justify-between px-6 py-3.5 bg-slate-950 border-b border-amber-600/30 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-amber-600/20 rounded-xl border border-amber-500/40 text-amber-400">
               <Swords className="w-6 h-6" />
@@ -84,8 +102,61 @@ export function LobbyListModal({
           </div>
         </div>
 
+        {/* Commander Profile & Player Name Input Bar */}
+        <div className="px-6 py-2.5 bg-slate-950/90 border-b border-slate-800/80 flex items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-500/20 text-blue-400 rounded-lg border border-blue-500/30">
+              <User className="w-4 h-4" />
+            </div>
+            <span className="text-xs text-slate-300 font-bold">نام فرمانده شما:</span>
+
+            {editingName ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  maxLength={20}
+                  autoFocus
+                  placeholder="نام بازیکن..."
+                  className="px-3 py-1 bg-slate-900 border border-amber-500 rounded-lg text-amber-300 text-xs font-bold outline-none shadow-inner"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName();
+                  }}
+                />
+                <button
+                  onClick={handleSaveName}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1 transition-all"
+                >
+                  <Check className="w-3.5 h-3.5" /> ذخیره
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-amber-400 bg-slate-900 px-3 py-1 rounded-lg border border-slate-700">
+                  {playerName || 'فرمانده ارشد'}
+                </span>
+                <button
+                  onClick={() => {
+                    setNameInput(playerName);
+                    setEditingName(true);
+                  }}
+                  className="p-1 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-all"
+                  title="تغییر نام بازیکن"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <span className="text-[11px] text-slate-500 hidden sm:inline">
+            💡 نام شما در جدول امتیازات و لابی‌های مولتی‌پلیر نمایش داده می‌شود.
+          </span>
+        </div>
+
         {/* Tab Selection Bar */}
-        <div className="flex items-center justify-between px-6 py-3 bg-slate-950/80 border-b border-slate-800 shrink-0">
+        <div className="flex items-center justify-between px-6 py-2.5 bg-slate-950/80 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('online')}
@@ -197,71 +268,92 @@ export function LobbyListModal({
                   </button>
                 </div>
               ) : (
-                filteredLobbies.map((lobby) => (
-                  <div
-                    key={lobby.id}
-                    className="p-4 bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/50 rounded-xl transition-all flex items-center justify-between gap-4"
-                  >
-                    {/* Lobby Main Info */}
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-amber-600/10 rounded-lg text-amber-400 border border-amber-500/20">
-                        <Shield className="w-5 h-5" />
+                filteredLobbies.map((lobby) => {
+                  const isInGame = lobby.status === 'in_game';
+                  return (
+                    <div
+                      key={lobby.id}
+                      className={`p-4 bg-slate-950/80 hover:bg-slate-950 border rounded-xl transition-all flex items-center justify-between gap-4 ${
+                        isInGame
+                          ? 'border-blue-500/40 hover:border-blue-500/80 ring-1 ring-blue-500/20'
+                          : 'border-slate-800 hover:border-amber-500/50'
+                      }`}
+                    >
+                      {/* Lobby Main Info */}
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg border ${
+                          isInGame
+                            ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                            : 'bg-amber-600/10 text-amber-400 border-amber-500/20'
+                        }`}>
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base font-bold text-white">{lobby.name}</span>
+                            {lobby.hasPassword && (
+                              <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-400 rounded text-[10px] font-bold flex items-center gap-1">
+                                <Lock className="w-3 h-3" /> رمزدار
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-slate-400 block mt-0.5">
+                            میزبان: <strong className="text-slate-300">{lobby.hostName}</strong>
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-base font-bold text-white">{lobby.name}</span>
-                          {lobby.hasPassword && (
-                            <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-400 rounded text-[10px] font-bold flex items-center gap-1">
-                              <Lock className="w-3 h-3" /> رمزدار
+
+                      {/* Badges / Stats */}
+                      <div className="flex items-center gap-6 text-xs">
+                        {/* Players Count */}
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Users className="w-4 h-4 text-amber-400" />
+                          <span>
+                            ظرفیت: <strong>{lobby.currentPlayers}</strong> / {lobby.maxPlayers} نفر
+                          </span>
+                        </div>
+
+                        {/* Gold */}
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Coins className="w-4 h-4 text-amber-400" />
+                          <span>طلا: {lobby.startingGold}</span>
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                          {lobby.status === 'waiting' ? (
+                            <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg font-semibold">
+                              در حال انتظار
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/40 rounded-lg font-bold flex items-center gap-1">
+                              <Zap className="w-3 h-3 text-blue-400" /> در حال بازی (فعال)
                             </span>
                           )}
                         </div>
-                        <span className="text-xs text-slate-400 block mt-0.5">
-                          میزبان: <strong className="text-slate-300">{lobby.hostName}</strong>
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Badges / Stats */}
-                    <div className="flex items-center gap-6 text-xs">
-                      {/* Players Count */}
-                      <div className="flex items-center gap-1.5 text-slate-300">
-                        <Users className="w-4 h-4 text-amber-400" />
-                        <span>
-                          ظرفیت: <strong>{lobby.currentPlayers}</strong> / {lobby.maxPlayers} نفر
-                        </span>
-                      </div>
-
-                      {/* Gold */}
-                      <div className="flex items-center gap-1.5 text-slate-300">
-                        <Coins className="w-4 h-4 text-amber-400" />
-                        <span>طلا: {lobby.startingGold}</span>
-                      </div>
-
-                      {/* Status */}
-                      <div>
-                        {lobby.status === 'waiting' ? (
-                          <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg font-semibold">
-                            در حال انتظار
-                          </span>
+                        {/* Join / Rejoin Action */}
+                        {isInGame ? (
+                          <button
+                            onClick={() => handleAttemptJoin(lobby)}
+                            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center gap-1.5"
+                          >
+                            <Zap className="w-4 h-4" />
+                            اتصال مجدد (Rejoin)
+                          </button>
                         ) : (
-                          <span className="px-2.5 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg font-semibold">
-                            در حال بازی
-                          </span>
+                          <button
+                            onClick={() => handleAttemptJoin(lobby)}
+                            disabled={lobby.currentPlayers >= lobby.maxPlayers}
+                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-extrabold rounded-xl transition-all shadow-md shadow-amber-600/10"
+                          >
+                            {lobby.currentPlayers >= lobby.maxPlayers ? 'تکمیل' : 'ورود به لابی'}
+                          </button>
                         )}
                       </div>
-
-                      {/* Join Action */}
-                      <button
-                        onClick={() => handleAttemptJoin(lobby)}
-                        disabled={lobby.status !== 'waiting' || lobby.currentPlayers >= lobby.maxPlayers}
-                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-extrabold rounded-xl transition-all shadow-md shadow-amber-600/10"
-                      >
-                        {lobby.currentPlayers >= lobby.maxPlayers ? 'تکمیل' : 'ورود به لابی'}
-                      </button>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

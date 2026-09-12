@@ -513,22 +513,25 @@ export const PhotoshopLeftSidebar: React.FC<PhotoshopLeftSidebarProps> = ({
                         <span className="text-[10px] text-zinc-500">مشاهده</span>
                       </button>
 
-                      {isOnline && onLeaveOnlineGame && (
-                        <button
-                          onClick={() => {
-                            if (window.confirm('آیا از خروج از این نبرد آنلاین و تسلیم اطمینان دارید؟')) {
-                              onLeaveOnlineGame();
-                            }
-                          }}
-                          className="w-full py-2.5 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 flex items-center justify-between text-red-300 transition"
-                        >
-                          <div className="flex items-center gap-2 text-xs font-bold">
-                            <LogOut className="w-4 h-4 text-red-400" />
-                            <span>خروج از مسابقه / تسلیم</span>
-                          </div>
-                          <span className="text-[10px] text-red-400 font-bold">تسلیم</span>
-                        </button>
-                      )}
+                      {/* 5. EXIT GAME / RETURN TO LOBBY */}
+                      <button
+                        onClick={() => {
+                          if (onLeaveOnlineGame) {
+                            onLeaveOnlineGame();
+                          } else if (onOpenLobby) {
+                            onOpenLobby();
+                          }
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-950/70 to-red-900/60 hover:from-red-900/80 hover:to-red-800/80 border border-red-500/50 flex items-center justify-between text-red-200 transition shadow-lg shadow-red-950/40"
+                      >
+                        <div className="flex items-center gap-2 text-xs font-black">
+                          <LogOut className="w-4 h-4 text-red-400" />
+                          <span>خروج از بازی و بازگشت به لابی</span>
+                        </div>
+                        <span className="text-[10px] bg-red-500/20 text-red-300 border border-red-500/40 px-2 py-0.5 rounded font-bold">
+                          خروج
+                        </span>
+                      </button>
                     </div>
                   </div>
                 </div>

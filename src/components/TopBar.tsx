@@ -154,8 +154,8 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Realtime Ping / Online Status Indicator */}
       {isOnline && (
         <div
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-zinc-950/80 border border-white/10 shrink-0 select-none shadow-sm"
-          title={pingMs != null ? `تاخیر همگام‌سازی شبکه: ${pingMs} میلی‌ثانیه` : 'اتصال آنلاین فعال (WebSockets)'}
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-zinc-950/80 border border-white/10 text-zinc-300 shrink-0 select-none shadow-sm"
+          title={`تاخیر همگام‌سازی شبکه: ${pingMs ?? 0}ms`}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -168,8 +168,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 : 'bg-red-400 shadow-[0_0_6px_#f87171]'
             }`}
           />
-          <span className="text-zinc-300">
-            {pingMs != null ? `${pingMs}ms` : 'همگام'}
+          <span>
+            {pingMs != null ? `${pingMs}ms` : 'آنلاین'}
           </span>
         </div>
       )}

@@ -206,24 +206,14 @@ export class GameRenderer {
   }
 
   private buildTerrain() {
-    // 1. Massive Outer Base Grass Ground (300x300) so the entire horizon is filled with green terrain
-    const outerGeo = new THREE.PlaneGeometry(300, 300, 60, 60);
+    // 1. Massive Outer Base Grass Ground (300x300) - Clean Uniform Green
+    const outerGeo = new THREE.PlaneGeometry(300, 300);
     outerGeo.rotateX(-Math.PI / 2);
 
-    const outerPos = outerGeo.attributes.position;
-    for (let i = 0; i < outerPos.count; i++) {
-      const x = outerPos.getX(i);
-      const z = outerPos.getZ(i);
-      const noise = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.4;
-      outerPos.setY(i, noise - 0.05);
-    }
-    outerGeo.computeVertexNormals();
-
     const outerMat = new THREE.MeshStandardMaterial({
-      color: 0x1f2e1a,
+      color: 0x2e4428,
       roughness: 0.9,
-      metalness: 0.1,
-      flatShading: true,
+      metalness: 0.05,
     });
 
     const outerGround = new THREE.Mesh(outerGeo, outerMat);
@@ -232,14 +222,14 @@ export class GameRenderer {
     outerGround.name = 'outer_ground';
     this.scene.add(outerGround);
 
-    // 2. Playable Castle Ground (40x40)
+    // 2. Playable Castle Ground (80x80) - Clean Solid Uniform Green
     const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
     groundGeo.rotateX(-Math.PI / 2);
 
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x2b3b22,
+      color: 0x2e4428,
       roughness: 0.85,
-      metalness: 0.1,
+      metalness: 0.05,
     });
 
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -248,11 +238,11 @@ export class GameRenderer {
     ground.name = 'ground';
     this.scene.add(ground);
 
-    // Uniform grid lines overlay in natural subtle dark green
-    const gridHelper = new THREE.GridHelper(MAP_SIZE, MAP_SIZE, 0x142211, 0x182815);
+    // Subtle uniform grid lines overlay
+    const gridHelper = new THREE.GridHelper(MAP_SIZE, MAP_SIZE, 0x24381f, 0x24381f);
     gridHelper.position.set(MAP_SIZE / 2, 0.005, MAP_SIZE / 2);
     (gridHelper.material as THREE.Material).transparent = true;
-    (gridHelper.material as THREE.Material).opacity = 0.5;
+    (gridHelper.material as THREE.Material).opacity = 0.2;
     this.gridHelperGroup.add(gridHelper);
 
     // Decorative Environment: Pine Trees, Rocks, Gold Nodes around map border & inside
@@ -1080,122 +1070,352 @@ export class GameRenderer {
     }
 
     const group = new THREE.Group();
-    const skinColor = 0xe0ac69;
-    const weaponColor = 0xc0c0c0;
+    const skinColor = isEnemy ? 0xd4a373 : 0xe0ac69;
+    const uniformColor = isEnemy ? 0x374151 : 0x27272a; // Dark Tactical combat fatigue
+    const vestColor = armorColor; // Team Colored Plate Carrier
+    const gunMetalColor = 0x18181b; // Gunmetal matte black
+    const steelColor = 0x52525b; // Weapon steel
+    const woodStockColor = 0x78350f; // Classic AK wood trim or polymer
 
-    const armorMat = new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.5, metalness: 0.5 });
+    const vestMat = new THREE.MeshStandardMaterial({ color: vestColor, roughness: 0.5, metalness: 0.3 });
+    const uniformMat = new THREE.MeshStandardMaterial({ color: uniformColor, roughness: 0.8 });
     const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.8 });
-    const weaponMat = new THREE.MeshStandardMaterial({ color: weaponColor, roughness: 0.3, metalness: 0.9 });
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+    const gunMat = new THREE.MeshStandardMaterial({ color: gunMetalColor, roughness: 0.3, metalness: 0.8 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: steelColor, roughness: 0.4, metalness: 0.9 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: woodStockColor, roughness: 0.7 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.1, metalness: 0.9 });
+    const rocketMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.5 }); // Olive green rocket warhead
 
-    // Body Torso
-    const torsoGeo = new THREE.BoxGeometry(0.4, 0.5, 0.25);
-    const torso = new THREE.Mesh(torsoGeo, armorMat);
-    torso.position.y = 0.65;
-    torso.castShadow = true;
-    group.add(torso);
+    // 1. Torso & Tactical Vest
+    const torsoGroup = new THREE.Group();
+    torsoGroup.name = 'torso';
+    torsoGroup.position.y = 0.65;
 
-    // Head + Helmet
-    const headGeo = new THREE.SphereGeometry(0.18, 8, 8);
-    const head = new THREE.Mesh(headGeo, skinMat);
-    head.position.y = 1.05;
-    head.castShadow = true;
-    group.add(head);
+    // Inner Uniform Shirt
+    const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.48, 0.22), uniformMat);
+    shirt.castShadow = true;
+    torsoGroup.add(shirt);
 
-    const helmGeo = new THREE.ConeGeometry(0.2, 0.2, 8);
-    const helm = new THREE.Mesh(helmGeo, armorMat);
-    helm.position.y = 1.2;
-    group.add(helm);
+    // Tactical Plate Carrier (Front & Back armor plates)
+    const plateCarrier = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.42, 0.26), vestMat);
+    plateCarrier.castShadow = true;
+    torsoGroup.add(plateCarrier);
 
-    // Legs (Pivot groups for walking animation!)
-    const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.45, 6);
-    
-    const leftLegGroup = new THREE.Group();
-    leftLegGroup.name = 'leftLeg';
-    leftLegGroup.position.set(-0.12, 0.45, 0);
-    const leftLeg = new THREE.Mesh(legGeo, armorMat);
-    leftLeg.position.y = -0.22;
-    leftLeg.castShadow = true;
-    leftLegGroup.add(leftLeg);
-    group.add(leftLegGroup);
-
-    const rightLegGroup = new THREE.Group();
-    rightLegGroup.name = 'rightLeg';
-    rightLegGroup.position.set(0.12, 0.45, 0);
-    const rightLeg = new THREE.Mesh(legGeo, armorMat);
-    rightLeg.position.y = -0.22;
-    rightLeg.castShadow = true;
-    rightLegGroup.add(rightLeg);
-    group.add(rightLegGroup);
-
-    // Arms & Weapons
-    const armGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.45, 6);
-    
-    const rightArmGroup = new THREE.Group();
-    rightArmGroup.name = 'rightArm';
-    rightArmGroup.position.set(0.24, 0.8, 0);
-    const rightArm = new THREE.Mesh(armGeo, armorMat);
-    rightArm.position.y = -0.2;
-    rightArmGroup.add(rightArm);
-
-    // Specific Weapons based on UnitType
-    if (type === 'archer' || type === 'enemy_archer') {
-      // Bow
-      const bowGeo = new THREE.TorusGeometry(0.3, 0.03, 6, 12, Math.PI);
-      const bow = new THREE.Mesh(bowGeo, woodMat);
-      bow.rotation.y = Math.PI / 2;
-      bow.position.set(0, -0.2, 0.2);
-      rightArmGroup.add(bow);
-    } else if (type === 'spearman') {
-      // Long Spear
-      const spearGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.4, 6);
-      const spear = new THREE.Mesh(spearGeo, woodMat);
-      spear.position.set(0, 0.2, 0.2);
-      spear.rotation.x = Math.PI / 4;
-      rightArmGroup.add(spear);
-
-      const tipGeo = new THREE.ConeGeometry(0.06, 0.25, 4);
-      const tip = new THREE.Mesh(tipGeo, weaponMat);
-      tip.position.set(0, 0.9, 0.2);
-      tip.rotation.x = Math.PI / 4;
-      rightArmGroup.add(tip);
-    } else if (type === 'knight' || type === 'swordsman' || type === 'enemy_grunt') {
-      // Sword & Shield
-      const swordGeo = new THREE.BoxGeometry(0.08, 0.7, 0.03);
-      const sword = new THREE.Mesh(swordGeo, weaponMat);
-      sword.position.set(0, -0.2, 0.2);
-      rightArmGroup.add(sword);
-
-      // Shield on left arm
-      const leftArmGroup = new THREE.Group();
-      leftArmGroup.name = 'leftArm';
-      leftArmGroup.position.set(-0.24, 0.8, 0);
-      const leftArm = new THREE.Mesh(armGeo, armorMat);
-      leftArm.position.y = -0.2;
-      leftArmGroup.add(leftArm);
-
-      const shieldGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.05, 6);
-      const shieldMat = new THREE.MeshStandardMaterial({ color: isEnemy ? 0x992222 : 0x3366aa });
-      const shield = new THREE.Mesh(shieldGeo, shieldMat);
-      shield.rotation.x = Math.PI / 2;
-      shield.position.set(-0.05, -0.2, 0.1);
-      leftArmGroup.add(shield);
-      group.add(leftArmGroup);
-    } else if (type === 'enemy_boss') {
-      // Big Boss Greataxe + Heavy Scale
-      group.scale.set(1.4, 1.4, 1.4);
-      const axeGeo = new THREE.BoxGeometry(0.1, 1.1, 0.05);
-      const axe = new THREE.Mesh(axeGeo, weaponMat);
-      axe.position.set(0, 0, 0.3);
-      rightArmGroup.add(axe);
-
-      const bladeGeo = new THREE.BoxGeometry(0.4, 0.35, 0.05);
-      const blade = new THREE.Mesh(bladeGeo, weaponMat);
-      blade.position.set(0.15, 0.4, 0.3);
-      rightArmGroup.add(blade);
+    // Tactical Ammo Pouches on chest
+    for (let p = -0.1; p <= 0.1; p += 0.1) {
+      const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.08), gunMat);
+      pouch.position.set(p, -0.08, 0.15);
+      pouch.castShadow = true;
+      torsoGroup.add(pouch);
     }
 
-    group.add(rightArmGroup);
+    // Tactical Comms Radio / Antenna on shoulder
+    const radio = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.06), gunMat);
+    radio.position.set(-0.16, 0.18, 0.08);
+    torsoGroup.add(radio);
+
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22), steelMat);
+    antenna.position.set(-0.16, 0.34, 0.08);
+    torsoGroup.add(antenna);
+
+    // 2. Head, Face & Tactical FAST Helmet
+    const headGroup = new THREE.Group();
+    headGroup.name = 'headGroup';
+    headGroup.position.set(0, 0.38, 0);
+
+    // Human Head / Neck
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), skinMat);
+    head.castShadow = true;
+    headGroup.add(head);
+
+    // Tactical Ballistic Helmet (Curved combat helmet)
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), vestMat);
+    helmet.position.set(0, 0.03, 0);
+    helmet.castShadow = true;
+    headGroup.add(helmet);
+
+    // Night Vision Goggles / Tactical Visor
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.08), glassMat);
+    visor.position.set(0, 0.04, 0.15);
+    headGroup.add(visor);
+
+    // Helmet NVG Mount bracket
+    const nvgMount = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.04), gunMat);
+    nvgMount.position.set(0, 0.12, 0.16);
+    headGroup.add(nvgMount);
+
+    torsoGroup.add(headGroup);
+    group.add(torsoGroup);
+
+    // 3. Legs (Tactical Combat Pants + Knee Pads + Boots)
+    const legMat = uniformMat;
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.9 });
+
+    const createSoldierLeg = (isLeft: boolean) => {
+      const legPivot = new THREE.Group();
+      legPivot.name = isLeft ? 'leftLeg' : 'rightLeg';
+      legPivot.position.set(isLeft ? -0.11 : 0.11, 0.44, 0);
+
+      // Thigh & Shin
+      const legMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.42, 8), legMat);
+      legMesh.position.y = -0.19;
+      legMesh.castShadow = true;
+      legPivot.add(legMesh);
+
+      // Tactical Knee Pad
+      const kneePad = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.06), vestMat);
+      kneePad.position.set(0, -0.16, 0.06);
+      legPivot.add(kneePad);
+
+      // Heavy Combat Boot
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.18), bootMat);
+      boot.position.set(0, -0.38, 0.03);
+      boot.castShadow = true;
+      legPivot.add(boot);
+
+      return legPivot;
+    };
+
+    const leftLegGroup = createSoldierLeg(true);
+    const rightLegGroup = createSoldierLeg(false);
+    group.add(leftLegGroup);
+    group.add(rightLegGroup);
+
+    // 4. Arms & Weapons Setup (Assault Rifle, Shoulder RPG, Sniper, Mortar, Boss Gun)
+    const armMat = uniformMat;
+    const gloveMat = gunMat;
+
+    // Left Arm (Support Hand)
+    const leftArmGroup = new THREE.Group();
+    leftArmGroup.name = 'leftArm';
+    leftArmGroup.position.set(-0.24, 0.2, 0);
+
+    const leftArmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.38, 8), armMat);
+    leftArmMesh.position.set(0.04, -0.14, 0.08);
+    leftArmMesh.rotation.set(-0.7, 0.3, -0.4);
+    leftArmMesh.castShadow = true;
+    leftArmGroup.add(leftArmMesh);
+
+    const leftGlove = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.09), gloveMat);
+    leftGlove.position.set(0.08, -0.24, 0.22);
+    leftArmGroup.add(leftGlove);
+    torsoGroup.add(leftArmGroup);
+
+    // Right Arm & Weapon Mount (Primary Aiming Arm)
+    const rightArmGroup = new THREE.Group();
+    rightArmGroup.name = 'rightArm';
+    rightArmGroup.position.set(0.22, 0.2, 0);
+
+    const rightArmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.38, 8), armMat);
+    rightArmMesh.position.set(-0.04, -0.14, 0.08);
+    rightArmMesh.rotation.set(-0.8, -0.3, 0.3);
+    rightArmMesh.castShadow = true;
+    rightArmGroup.add(rightArmMesh);
+
+    const rightGlove = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.09), gloveMat);
+    rightGlove.position.set(-0.04, -0.24, 0.22);
+    rightArmGroup.add(rightGlove);
+
+    // Weapon Container
+    const weaponGroup = new THREE.Group();
+    weaponGroup.name = 'weaponGroup';
+
+    // Muzzle Flash Effect Mesh (Hidden by default, flashes during attack!)
+    const muzzleFlash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 })
+    );
+    muzzleFlash.name = 'muzzleFlash';
+
+    if (type === 'spearman') {
+      // --- SHOULDER-MOUNTED RPG ROCKET LAUNCHER (RPG-7 / AT4) ---
+      weaponGroup.position.set(-0.08, 0.08, 0.05);
+
+      // Launcher Tube resting over right shoulder
+      const rpgTube = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 1.15, 12), gunMat);
+      rpgTube.rotation.x = Math.PI / 2;
+      rpgTube.position.set(0, 0, 0.1);
+      rpgTube.castShadow = true;
+      weaponGroup.add(rpgTube);
+
+      // Conical Rocket Warhead protruding forward
+      const rocketCone = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.32, 10), rocketMat);
+      rocketCone.rotation.x = Math.PI / 2;
+      rocketCone.position.set(0, 0, 0.78);
+      rocketCone.castShadow = true;
+      weaponGroup.add(rocketCone);
+
+      const rocketBooster = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.15, 10), steelMat);
+      rocketBooster.rotation.x = Math.PI / 2;
+      rocketBooster.position.set(0, 0, 0.58);
+      weaponGroup.add(rocketBooster);
+
+      // Rear Exhaust Nozzle
+      const exhaust = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.18, 10), steelMat);
+      exhaust.rotation.x = -Math.PI / 2;
+      exhaust.position.set(0, 0, -0.52);
+      weaponGroup.add(exhaust);
+
+      // Optical PGO Scope & Pistol Grip
+      const scope = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.14), steelMat);
+      scope.position.set(-0.08, 0.09, 0.15);
+      weaponGroup.add(scope);
+
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.07), woodMat);
+      grip.position.set(0, -0.12, 0.1);
+      weaponGroup.add(grip);
+
+      muzzleFlash.position.set(0, 0, 0.95);
+      weaponGroup.add(muzzleFlash);
+
+    } else if (type === 'archer' || type === 'enemy_archer') {
+      // --- HIGH-PRECISION SNIPER RIFLE WITH OPTICAL SCOPE & BIPOD ---
+      weaponGroup.position.set(-0.12, -0.16, 0.26);
+
+      // Long Rifle Body & Receiver
+      const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.75), gunMat);
+      rifleBody.castShadow = true;
+      weaponGroup.add(rifleBody);
+
+      // Long Heavy Barrel + Suppressor
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.65, 8), steelMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.02, 0.65);
+      barrel.castShadow = true;
+      weaponGroup.add(barrel);
+
+      const suppressor = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.22, 8), gunMat);
+      suppressor.rotation.x = Math.PI / 2;
+      suppressor.position.set(0, 0.02, 0.98);
+      weaponGroup.add(suppressor);
+
+      // High-Magnification Telescopic Optical Scope
+      const scopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.035, 0.32, 8), steelMat);
+      scopeTube.rotation.x = Math.PI / 2;
+      scopeTube.position.set(0, 0.11, 0.12);
+      weaponGroup.add(scopeTube);
+
+      const scopeLens = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.02, 8), glassMat);
+      scopeLens.rotation.x = Math.PI / 2;
+      scopeLens.position.set(0, 0.11, 0.28);
+      weaponGroup.add(scopeLens);
+
+      // Folded Bipod
+      const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.22), steelMat);
+      bipodL.position.set(-0.04, -0.06, 0.55);
+      bipodL.rotation.z = -0.3;
+      weaponGroup.add(bipodL);
+
+      const bipodR = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.22), steelMat);
+      bipodR.position.set(0.04, -0.06, 0.55);
+      bipodR.rotation.z = 0.3;
+      weaponGroup.add(bipodR);
+
+      muzzleFlash.position.set(0, 0.02, 1.15);
+      weaponGroup.add(muzzleFlash);
+
+    } else if (type === 'knight') {
+      // --- HEAVY MORTAR / DUAL ROCKET LAUNCHER ---
+      weaponGroup.position.set(-0.06, 0.1, 0.05);
+
+      const tube1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 10), gunMat);
+      tube1.rotation.x = Math.PI / 2 - 0.2;
+      tube1.position.set(-0.07, 0.05, 0.1);
+      tube1.castShadow = true;
+      weaponGroup.add(tube1);
+
+      const tube2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 10), gunMat);
+      tube2.rotation.x = Math.PI / 2 - 0.2;
+      tube2.position.set(0.07, 0.05, 0.1);
+      tube2.castShadow = true;
+      weaponGroup.add(tube2);
+
+      const rocketTip1 = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 8), rocketMat);
+      rocketTip1.rotation.x = Math.PI / 2 - 0.2;
+      rocketTip1.position.set(-0.07, 0.16, 0.65);
+      weaponGroup.add(rocketTip1);
+
+      const rocketTip2 = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 8), rocketMat);
+      rocketTip2.rotation.x = Math.PI / 2 - 0.2;
+      rocketTip2.position.set(0.07, 0.16, 0.65);
+      weaponGroup.add(rocketTip2);
+
+      muzzleFlash.position.set(0, 0.16, 0.8);
+      weaponGroup.add(muzzleFlash);
+
+    } else if (type === 'enemy_boss') {
+      // --- HEAVY COMMANDER / SQUAD ROTARY CANNON ---
+      group.scale.set(1.4, 1.4, 1.4);
+      weaponGroup.position.set(-0.14, -0.16, 0.3);
+
+      const minigunBody = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.55, 10), gunMat);
+      minigunBody.rotation.x = Math.PI / 2;
+      minigunBody.position.set(0, 0, 0.1);
+      weaponGroup.add(minigunBody);
+
+      // Rotating Barrel Cluster
+      for (let b = 0; b < 4; b++) {
+        const angle = (b * Math.PI) / 2;
+        const bMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 6), steelMat);
+        bMesh.rotation.x = Math.PI / 2;
+        bMesh.position.set(Math.cos(angle) * 0.08, Math.sin(angle) * 0.08, 0.6);
+        weaponGroup.add(bMesh);
+      }
+
+      // Ammo Feed Belt & Box
+      const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.18), vestMat);
+      ammoBox.position.set(-0.25, 0.25, -0.2);
+      torsoGroup.add(ammoBox);
+
+      muzzleFlash.position.set(0, 0, 1.05);
+      weaponGroup.add(muzzleFlash);
+
+    } else {
+      // --- TACTICAL ASSAULT RIFLE (M4A1 / AK-47) (Default Swordsman & Grunt) ---
+      weaponGroup.position.set(-0.1, -0.15, 0.24);
+
+      // Receiver & Body
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.11, 0.55), gunMat);
+      receiver.castShadow = true;
+      weaponGroup.add(receiver);
+
+      // Rifle Barrel with Flash Hider
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.45, 8), steelMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.01, 0.48);
+      barrel.castShadow = true;
+      weaponGroup.add(barrel);
+
+      const flashHider = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.08, 8), steelMat);
+      flashHider.rotation.x = Math.PI / 2;
+      flashHider.position.set(0, 0.01, 0.72);
+      weaponGroup.add(flashHider);
+
+      // Curved Banana / Stanag Magazine
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.1), gunMat);
+      mag.position.set(0, -0.12, 0.16);
+      mag.rotation.x = 0.35;
+      weaponGroup.add(mag);
+
+      // Tactical Holographic Red-Dot Sight
+      const sight = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.07, 0.12), steelMat);
+      sight.position.set(0, 0.09, 0.1);
+      weaponGroup.add(sight);
+
+      const dotLens = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.04), glassMat);
+      dotLens.position.set(0, 0.09, 0.16);
+      weaponGroup.add(dotLens);
+
+      // Stock
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.22), woodStockColor ? woodMat : gunMat);
+      stock.position.set(0, -0.02, -0.32);
+      weaponGroup.add(stock);
+
+      muzzleFlash.position.set(0, 0.01, 0.8);
+      weaponGroup.add(muzzleFlash);
+    }
+
+    rightArmGroup.add(weaponGroup);
 
     // Selection Circle under unit
     const ringGeo = new THREE.RingGeometry(0.42, 0.52, 16);
@@ -1212,7 +1432,7 @@ export class GameRenderer {
     group.add(ring);
 
     // Slim Health Bar for Unit
-    const barY = type === 'enemy_boss' ? 2.1 : 1.5;
+    const barY = type === 'enemy_boss' ? 2.3 : 1.6;
     const hpBgGeo = new THREE.PlaneGeometry(0.8, 0.12);
     const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.DoubleSide });
     const hpBg = new THREE.Mesh(hpBgGeo, hpBgMat);
@@ -1253,7 +1473,8 @@ export class GameRenderer {
     activeBuildType: BuildingType | null,
     mouseGridPos: { x: number; z: number } | null,
     isPlacementValid: boolean = true,
-    selectedBuildingId?: string | null
+    selectedBuildingId?: string | null,
+    selfPlayerId: number = 1
   ) {
     const time = performance.now() * 0.003;
 
@@ -1275,6 +1496,8 @@ export class GameRenderer {
     // 1. Sync Buildings
     const currentBuildingIds = new Set<string>();
     buildings.forEach((b) => {
+      const bPid = b.playerId || (b.isEnemy ? 2 : 1);
+      const isEnemyB = bPid !== selfPlayerId;
       currentBuildingIds.add(b.id);
       let mesh = this.buildingMeshes.get(b.id);
       const bConfig = BUILDINGS_CONFIG[b.type];
@@ -1282,7 +1505,7 @@ export class GameRenderer {
       const sizeZ = bConfig ? bConfig.sizeZ : 2;
 
       if (!mesh) {
-        mesh = this.createBuildingMesh(b.type, b.isEnemy, b.isConstructed, b.playerId || (b.isEnemy ? 2 : 1));
+        mesh = this.createBuildingMesh(b.type, isEnemyB, b.isConstructed, bPid);
         mesh.position.set(b.gridX + (sizeX / 2), 0, b.gridZ + (sizeZ / 2));
         
         // Add building selection ring & health bar
@@ -1324,7 +1547,7 @@ export class GameRenderer {
       const bHpFill = mesh.getObjectByName('bHpFill') as THREE.Mesh;
       if (bHpBg && bHpFill) {
         bHpBg.quaternion.copy(this.camera.quaternion); // Billboarding health bar
-        if (b.hp < b.maxHp || isSelected || b.isEnemy) {
+        if (b.hp < b.maxHp || isSelected || isEnemyB) {
           bHpBg.visible = true;
           const pct = Math.max(0, b.hp / b.maxHp);
           bHpFill.scale.set(pct, 1, 1);
@@ -1349,27 +1572,56 @@ export class GameRenderer {
     // 2. Sync Units
     const currentUnitIds = new Set<string>();
     units.forEach((u) => {
+      const uPid = u.playerId || (u.isEnemy ? 2 : 1);
+      const isEnemyForPlayer = uPid !== selfPlayerId;
       currentUnitIds.add(u.id);
       let mesh = this.unitMeshes.get(u.id);
       if (!mesh) {
-        mesh = this.createUnitMesh(u.type, u.isEnemy, u.playerId || (u.isEnemy ? 2 : 1));
+        mesh = this.createUnitMesh(u.type, isEnemyForPlayer, uPid);
         this.scene.add(mesh);
         this.unitMeshes.set(u.id, mesh);
       }
 
-      // Smooth position & rotation update
-      mesh.position.set(u.x, 0, u.z);
-      mesh.rotation.y = u.rotation;
+      // Ultra-smooth position & rotation interpolation
+      const targetX = u.x;
+      const targetZ = u.z;
+      const curX = mesh.position.x;
+      const curZ = mesh.position.z;
+      const dist = Math.hypot(targetX - curX, targetZ - curZ);
+
+      // Snap on initial spawn or large teleports
+      if (dist > 5.0 || mesh.userData.isNew) {
+        mesh.position.set(targetX, 0, targetZ);
+        mesh.userData.isNew = false;
+      } else if (dist > 0.0005) {
+        mesh.position.x += (targetX - curX) * 0.35;
+        mesh.position.z += (targetZ - curZ) * 0.35;
+      } else {
+        mesh.position.set(targetX, 0, targetZ);
+      }
+
+      // Smooth shortest-arc rotation
+      let diffAngle = u.rotation - mesh.rotation.y;
+      while (diffAngle < -Math.PI) diffAngle += Math.PI * 2;
+      while (diffAngle > Math.PI) diffAngle -= Math.PI * 2;
+      if (Math.abs(diffAngle) > 0.001) {
+        mesh.rotation.y += diffAngle * 0.3;
+      } else {
+        mesh.rotation.y = u.rotation;
+      }
 
       // Selection / Target Ring
       const isSelected = selectedUnitIds.has(u.id);
       const ring = mesh.getObjectByName('selectionRing') as THREE.Mesh;
       if (ring && ring.material instanceof THREE.MeshBasicMaterial) {
-        if (u.isEnemy) {
-          const isTargetedByPlayer = units.some((pu) => !pu.isEnemy && selectedUnitIds.has(pu.id) && pu.targetEntityId === u.id);
-          ring.material.opacity = isTargetedByPlayer ? 0.95 : u.hp < u.maxHp ? 0.5 : 0;
+        if (isEnemyForPlayer) {
+          const isTargetedByPlayer = units.some((pu) => (pu.playerId || 1) === selfPlayerId && selectedUnitIds.has(pu.id) && pu.targetEntityId === u.id);
+          ring.material.opacity = isTargetedByPlayer ? 0.95 : u.hp < u.maxHp ? 0.45 : 0;
+          ring.material.color.setHex(0xef4444); // Red target ring for enemies
         } else {
           ring.material.opacity = isSelected ? 0.95 : 0;
+          const pConfig = PLAYERS_CONFIG[uPid] || PLAYERS_CONFIG[1];
+          ring.material.color.setHex(pConfig.colorHex);
         }
       }
 
@@ -1378,8 +1630,8 @@ export class GameRenderer {
       const hpFill = mesh.getObjectByName('hpFill') as THREE.Mesh;
       if (hpBg && hpFill) {
         hpBg.quaternion.copy(this.camera.quaternion); // Billboard facing camera
-        if (u.hp < u.maxHp || isSelected || u.isEnemy) {
-          hpBg.visible = u.hp < u.maxHp || isSelected;
+        if (u.hp < u.maxHp || isSelected || isEnemyForPlayer) {
+          hpBg.visible = u.hp < u.maxHp || isSelected || isEnemyForPlayer;
           const pct = Math.max(0, u.hp / u.maxHp);
           hpFill.scale.set(pct, 1, 1);
           hpFill.position.x = -(1 - pct) * (0.76 * 0.5);
@@ -1391,28 +1643,50 @@ export class GameRenderer {
         }
       }
 
-      // Walking Animation
+      // Walking & Idle Locomotion (Zero in-place jitter!)
       const leftLeg = mesh.getObjectByName('leftLeg');
       const rightLeg = mesh.getObjectByName('rightLeg');
+      const torso = mesh.getObjectByName('torso');
+      const isMoving = u.state === 'moving' && dist > 0.005;
+
       if (leftLeg && rightLeg) {
-        if (u.state === 'moving') {
-          const moveSpeed = UNITS_CONFIG[u.type].moveSpeed;
-          const walkCycle = Math.sin(time * moveSpeed * 6);
-          leftLeg.rotation.x = walkCycle * 0.6;
-          rightLeg.rotation.x = -walkCycle * 0.6;
+        if (isMoving) {
+          const speedFactor = UNITS_CONFIG[u.type]?.moveSpeed || 1.8;
+          mesh.userData.walkPhase = (mesh.userData.walkPhase || 0) + (speedFactor * 0.16);
+          const phase = mesh.userData.walkPhase;
+          leftLeg.rotation.x = Math.sin(phase) * 0.5;
+          rightLeg.rotation.x = -Math.sin(phase) * 0.5;
+          if (torso) {
+            torso.position.y = 0.65 + Math.abs(Math.sin(phase * 2)) * 0.02;
+          }
         } else {
+          // Perfectly stationary and still when idle
           leftLeg.rotation.x = 0;
           rightLeg.rotation.x = 0;
+          if (torso) {
+            torso.position.y = 0.65;
+          }
         }
       }
 
-      // Attack Animation
+      // Attack & Weapon Aiming / Recoil Animation
       const rightArm = mesh.getObjectByName('rightArm');
+      const muzzleFlash = mesh.getObjectByName('muzzleFlash') as THREE.Mesh;
       if (rightArm) {
         if (u.state === 'attacking') {
-          rightArm.rotation.x = -Math.sin(time * 12) * 0.8;
+          // Tactical aiming with firing recoil kick
+          const recoil = Math.sin(time * 18);
+          rightArm.rotation.x = -0.55 + recoil * 0.12;
+          rightArm.position.z = -Math.max(0, recoil) * 0.04;
+          if (muzzleFlash && muzzleFlash.material instanceof THREE.MeshBasicMaterial) {
+            muzzleFlash.material.opacity = recoil > 0.4 ? 0.95 : 0;
+          }
         } else {
           rightArm.rotation.x = 0;
+          rightArm.position.z = 0;
+          if (muzzleFlash && muzzleFlash.material instanceof THREE.MeshBasicMaterial) {
+            muzzleFlash.material.opacity = 0;
+          }
         }
       }
     });
@@ -1425,37 +1699,79 @@ export class GameRenderer {
       }
     });
 
-    // 3. Sync Projectiles (Flying Arrows, Cannonballs, Mortar Shells)
+    // 3. Sync Projectiles (High-Velocity Glowing Bullet Dots, Tracer Pellets, Cannonballs, Mortar Shells)
     const currentProjIds = new Set<string>();
     projectiles.forEach((p) => {
       currentProjIds.add(p.id);
       let mesh = this.projectileMeshes.get(p.id);
       if (!mesh) {
         if (p.type === 'mortar') {
-          // Fiery Mortar Shell
+          // Fiery Heavy Mortar Shell
           const group = new THREE.Group();
-          const sphereGeo = new THREE.SphereGeometry(0.22, 8, 8);
-          const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+          const sphereGeo = new THREE.SphereGeometry(0.18, 8, 8);
+          const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
           const sphere = new THREE.Mesh(sphereGeo, sphereMat);
           group.add(sphere);
 
-          const coreGeo = new THREE.SphereGeometry(0.12, 6, 6);
-          const coreMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+          const coreGeo = new THREE.SphereGeometry(0.1, 6, 6);
+          const coreMat = new THREE.MeshBasicMaterial({ color: 0xffdd00 });
           const core = new THREE.Mesh(coreGeo, coreMat);
           group.add(core);
 
           mesh = group as unknown as THREE.Mesh;
         } else if (p.type === 'cannon') {
-          // Heavy Cannonball
-          const cannonGeo = new THREE.SphereGeometry(0.16, 8, 8);
-          const cannonMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+          // Heavy High-Velocity Cannonball
+          const cannonGeo = new THREE.SphereGeometry(0.12, 8, 8);
+          const cannonMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
           mesh = new THREE.Mesh(cannonGeo, cannonMat);
+        } else if (p.type === 'rpg') {
+          // Tactical RPG Rocket
+          const rocketGroup = new THREE.Group();
+          const headGeo = new THREE.SphereGeometry(0.08, 6, 6);
+          const headMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+          const head = new THREE.Mesh(headGeo, headMat);
+          rocketGroup.add(head);
+
+          const exhaustGeo = new THREE.SphereGeometry(0.06, 6, 6);
+          const exhaustMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+          const exhaust = new THREE.Mesh(exhaustGeo, exhaustMat);
+          exhaust.position.z = -0.12;
+          rocketGroup.add(exhaust);
+
+          mesh = rocketGroup as unknown as THREE.Mesh;
         } else {
-          // Standard Arrow
-          const arrowGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 4);
-          const arrowMat = new THREE.MeshBasicMaterial({ color: p.isEnemy ? 0xff4444 : 0xffff00 });
-          mesh = new THREE.Mesh(arrowGeo, arrowMat);
-          mesh.rotation.x = Math.PI / 2;
+          // Ultra-Fast Glowing Round Bullet Dot / Tracer Pellet
+          const bulletGroup = new THREE.Group();
+
+          // Outer luminous bullet glow sphere (tiny and crisp)
+          const isHostile = p.isEnemy;
+          const glowColor = isHostile ? 0xff3b30 : 0xffcc00;
+          const innerColor = isHostile ? 0xff8877 : 0xffffff;
+
+          const sphereGeo = new THREE.SphereGeometry(0.055, 8, 8);
+          const sphereMat = new THREE.MeshBasicMaterial({ color: glowColor });
+          const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+          bulletGroup.add(sphere);
+
+          // Super bright white/hot-center micro core dot
+          const coreGeo = new THREE.SphereGeometry(0.03, 6, 6);
+          const coreMat = new THREE.MeshBasicMaterial({ color: innerColor });
+          const core = new THREE.Mesh(coreGeo, coreMat);
+          bulletGroup.add(core);
+
+          // Fast aerodynamic tracer tail
+          const tailGeo = new THREE.CylinderGeometry(0.015, 0.045, 0.2, 6);
+          tailGeo.rotateX(Math.PI / 2);
+          const tailMat = new THREE.MeshBasicMaterial({
+            color: glowColor,
+            transparent: true,
+            opacity: 0.8,
+          });
+          const tail = new THREE.Mesh(tailGeo, tailMat);
+          tail.position.z = -0.09;
+          bulletGroup.add(tail);
+
+          mesh = bulletGroup as unknown as THREE.Mesh;
         }
         this.scene.add(mesh);
         this.projectileMeshes.set(p.id, mesh);
@@ -1463,13 +1779,21 @@ export class GameRenderer {
 
       const currX = THREE.MathUtils.lerp(p.startX, p.targetX, p.progress);
       const currZ = THREE.MathUtils.lerp(p.startZ, p.targetZ, p.progress);
-      
-      const arcH = p.arcHeight !== undefined ? p.arcHeight : 1.5;
-      const currY = THREE.MathUtils.lerp(p.startY + 1.0, p.targetY + 0.5, p.progress) + Math.sin(p.progress * Math.PI) * arcH;
+
+      // Trajectory arc: Flat & direct for bullets, parabolic only for mortar
+      let defaultArc = 0.03;
+      if (p.type === 'mortar') defaultArc = 4.5;
+      else if (p.type === 'cannon') defaultArc = 0.3;
+      else if (p.type === 'rpg') defaultArc = 0.15;
+
+      const arcH = p.arcHeight !== undefined ? p.arcHeight : defaultArc;
+      const startElevation = p.startY || 0.6;
+      const targetElevation = p.targetY !== undefined ? p.targetY : 0.5;
+      const currY = THREE.MathUtils.lerp(startElevation, targetElevation, p.progress) + Math.sin(p.progress * Math.PI) * arcH;
 
       mesh.position.set(currX, currY, currZ);
       if (p.type !== 'mortar') {
-        mesh.lookAt(p.targetX, p.targetY + 0.5, p.targetZ);
+        mesh.lookAt(p.targetX, targetElevation, p.targetZ);
       }
     });
 

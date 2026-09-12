@@ -23,6 +23,7 @@ interface GameCanvasProps {
   setCameraPos: React.Dispatch<React.SetStateAction<{ x: number; z: number }>>;
   selfPlayerId?: number;
   mapSeed?: string | number;
+  onCanvasInteraction?: () => void;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -42,8 +43,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   setCameraPos,
   selfPlayerId = 1,
   mapSeed,
+  onCanvasInteraction,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
 
   // Player affiliation helpers (supports 1v1, 1vAI, and 4-player online matches)
@@ -53,6 +56,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const isEnemyBuilding = (b: BuildingInstance) => (b.playerId || (b.isEnemy ? 2 : 1)) !== selfPlayerId;
 
   const [mouseGridPos, setMouseGridPos] = useState<{ x: number; z: number } | null>(null);
+  const mouseGridPosRef = useRef<{ x: number; z: number } | null>(null);
 
   // Box Drag Selection State
   const [isDragging, setIsDragging] = useState(false);
@@ -63,25 +67,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [isPanDragging, setIsPanDragging] = useState(false);
   const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
   const cameraPosRef = useRef(cameraPos);
-
-  // Orientation warning on mobile devices
-  const [isPortrait, setIsPortrait] = useState<boolean>(false);
-
-  useEffect(() => {
-    const checkOrientation = () => {
-      const isMobile = window.innerWidth <= 850 || 'ontouchstart' in window;
-      const isPort = isMobile && window.innerHeight > window.innerWidth;
-      setIsPortrait(isPort);
-    };
-
-    checkOrientation();
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
-    return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
-    };
-  }, []);
 
   // Sync cameraPosRef when cameraPos prop changes externally
   useEffect(() => {
@@ -97,20 +82,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Initialize Three.js GameRenderer
   useEffect(() => {
-    if (!containerRef.current) return;
+    const mountEl = canvasMountRef.current || containerRef.current;
+    if (!mountEl) return;
 
-    // Clear any previous canvas child elements to prevent duplicate stacked canvases
-    while (containerRef.current.firstChild) {
-      containerRef.current.removeChild(containerRef.current.firstChild);
+    // Clear previous canvases in mount element
+    while (mountEl.firstChild) {
+      mountEl.removeChild(mountEl.firstChild);
     }
 
     const seedVal = stringToSeed(mapSeed);
-    const renderer = new GameRenderer(containerRef.current, seedVal);
+    const renderer = new GameRenderer(mountEl, seedVal);
     rendererRef.current = renderer;
 
     const handleResize = () => {
-      if (containerRef.current && rendererRef.current) {
-        rendererRef.current.resize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+      if (mountEl && rendererRef.current) {
+        rendererRef.current.resize(mountEl.clientWidth, mountEl.clientHeight);
       }
     };
 
@@ -147,7 +133,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   selectedUnitIdsRef.current = selectedUnitIds;
   const activeBuildTypeRef = useRef(activeBuildType);
   activeBuildTypeRef.current = activeBuildType;
-  const mouseGridPosRef = useRef(mouseGridPos);
   mouseGridPosRef.current = mouseGridPos;
   const selectedBuildingRef = useRef(selectedBuilding);
   selectedBuildingRef.current = selectedBuilding;
@@ -169,7 +154,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           activeBuildTypeRef.current,
           mouseGridPosRef.current,
           isValid,
-          selectedBuildingRef.current?.id
+          selectedBuildingRef.current?.id,
+          selfPlayerId
         );
       }
       animId = requestAnimationFrame(animate);
@@ -225,6 +211,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Handle Touch Start
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (onCanvasInteraction) {
+      onCanvasInteraction();
+    }
     if (e.touches.length === 1) {
       const touch = e.touches[0];
       touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
@@ -323,6 +312,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       initialPinchZoomRef.current = null;
 
       if (!touchMovedRef.current && touchStartPosRef.current && rendererRef.current) {
+        if (onCanvasInteraction) {
+          onCanvasInteraction();
+        }
         const touchX = touchStartPosRef.current.x;
         const touchY = touchStartPosRef.current.y;
         const now = Date.now();
@@ -504,11 +496,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const gridPos = rendererRef.current.raycastGround(e.clientX, e.clientY);
     if (gridPos) {
       setMouseGridPos(gridPos);
+      mouseGridPosRef.current = gridPos;
     }
   };
 
   // Handle Mouse Down
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (onCanvasInteraction) {
+      onCanvasInteraction();
+    }
     lastMousePosRef.current = { x: e.clientX, y: e.clientY };
     mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
 
@@ -526,26 +522,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   // Select building or unit under cursor
-  const performSelectionAtGrid = () => {
-    if (!mouseGridPos) return;
+  const performSelectionAtGrid = (customGridPos?: { x: number; z: number } | null) => {
+    const pos = customGridPos || mouseGridPosRef.current || mouseGridPos;
+    if (!pos) return;
 
     const clickedUnit = units.find(
-      (u) => Math.hypot(u.x - (mouseGridPos.x + 0.5), u.z - (mouseGridPos.z + 0.5)) < 1.0
+      (u) => Math.hypot(u.x - (pos.x + 0.5), u.z - (pos.z + 0.5)) < 1.2
     );
     if (clickedUnit) {
       if (isMineUnit(clickedUnit)) {
         setSelectedUnitIds(new Set([clickedUnit.id]));
         setSelectedBuilding(null);
         soundManager.playClick();
+      } else {
+        // Enemy unit clicked
+        setSelectedUnitIds(new Set());
+        setSelectedBuilding(null);
+        soundManager.playClick();
       }
     } else {
       const clickedB = buildings.find((b) => {
-        const bSize = BUILDINGS_CONFIG[b.type].sizeX;
+        const bSize = BUILDINGS_CONFIG[b.type]?.sizeX || 2;
         return (
-          mouseGridPos.x >= b.gridX &&
-          mouseGridPos.x < b.gridX + bSize &&
-          mouseGridPos.z >= b.gridZ &&
-          mouseGridPos.z < b.gridZ + bSize
+          pos.x >= b.gridX &&
+          pos.x < b.gridX + bSize &&
+          pos.z >= b.gridZ &&
+          pos.z < b.gridZ + bSize
         );
       });
       if (clickedB) {
@@ -572,7 +574,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     if (e.button !== 0 || !rendererRef.current) return;
 
-    if (isDragging && dragStart && dragEnd && draggedDist > 6) {
+    if (onCanvasInteraction) {
+      onCanvasInteraction();
+    }
+
+    const currentRaycastPos = rendererRef.current.raycastGround(e.clientX, e.clientY);
+    if (currentRaycastPos) {
+      setMouseGridPos(currentRaycastPos);
+      mouseGridPosRef.current = currentRaycastPos;
+    }
+
+    if (isDragging && dragStart && dragEnd && draggedDist > 8) {
       const minX = Math.min(dragStart.x, dragEnd.x);
       const maxX = Math.max(dragStart.x, dragEnd.x);
       const minY = Math.min(dragStart.y, dragEnd.y);
@@ -599,11 +611,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         setSelectedBuilding(null);
         soundManager.playClick();
       }
-    } else if (draggedDist < 6) {
-      if (activeBuildType && mouseGridPos) {
-        onPlaceBuilding(mouseGridPos.x, mouseGridPos.z);
+    } else if (draggedDist <= 8) {
+      const targetPos = currentRaycastPos || mouseGridPosRef.current || mouseGridPos;
+      if (activeBuildType && targetPos) {
+        onPlaceBuilding(targetPos.x, targetPos.z);
       } else {
-        performSelectionAtGrid();
+        performSelectionAtGrid(targetPos);
       }
     }
 
@@ -614,39 +627,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Handle Double Click
   const handleDoubleClick = (e: React.MouseEvent) => {
-    if (activeBuildType && mouseGridPos) {
-      onPlaceBuilding(mouseGridPos.x, mouseGridPos.z);
+    if (!rendererRef.current) return;
+    const currentRaycastPos = rendererRef.current.raycastGround(e.clientX, e.clientY) || mouseGridPos;
+    if (activeBuildType && currentRaycastPos) {
+      onPlaceBuilding(currentRaycastPos.x, currentRaycastPos.z);
     } else {
-      performSelectionAtGrid();
+      performSelectionAtGrid(currentRaycastPos);
     }
   };
 
   // Handle Right Click (Command Units to Move or Attack)
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (onCanvasInteraction) {
+      onCanvasInteraction();
+    }
     if (!rendererRef.current) return;
 
-    if (rightClickStartRef.current) {
-      const dist = Math.hypot(e.clientX - rightClickStartRef.current.x, e.clientY - rightClickStartRef.current.y);
-      if (dist > 8) {
-        rightClickStartRef.current = null;
-        return;
-      }
-    }
     rightClickStartRef.current = null;
 
-    const gridPos = rendererRef.current.raycastGround(e.clientX, e.clientY);
+    const gridPos = rendererRef.current.raycastGround(e.clientX, e.clientY) || mouseGridPosRef.current || mouseGridPos;
     if (!gridPos) return;
 
     if (selectedUnitIds.size > 0) {
       const enemyUnitTarget = units.find(
-        (u) => isEnemyUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.4
+        (u) => isEnemyUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.5
       );
 
       const enemyBuildingTarget = buildings.find((b) => {
         if (!isEnemyBuilding(b) || b.hp <= 0) return false;
-        const bSizeX = BUILDINGS_CONFIG[b.type].sizeX;
-        const bSizeZ = BUILDINGS_CONFIG[b.type].sizeZ;
+        const bSizeX = BUILDINGS_CONFIG[b.type]?.sizeX || 2;
+        const bSizeZ = BUILDINGS_CONFIG[b.type]?.sizeZ || 2;
         return (
           gridPos.x >= b.gridX &&
           gridPos.x < b.gridX + bSizeX &&
@@ -736,39 +747,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       onTouchEnd={handleTouchEnd}
       className="w-full h-full relative overflow-hidden select-none cursor-crosshair touch-none"
     >
-      {/* Mobile Portrait Orientation Overlay Alert */}
-      {isPortrait && (
-        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center text-white dir-rtl pointer-events-auto">
-          <div className="w-20 h-20 bg-amber-500/10 border-2 border-amber-500/40 text-amber-400 rounded-3xl flex items-center justify-center mb-6 animate-pulse">
-            <RotateCcw className="w-10 h-10" />
-          </div>
-          <h3 className="text-xl font-black text-amber-300 mb-2">
-            گوشی را به حالت افقی (Landscape) بچرخانید 🔄
-          </h3>
-          <p className="text-sm text-slate-300 max-w-xs leading-relaxed mb-6">
-            برای تجربه کامل میدان نبرد استراتژیک، پیمایش مپ و کنترل تاچ سربازان، گوشی خود را به حالت افقی قرار دهید.
-          </p>
-          <div className="flex flex-col gap-3 w-full max-w-xs">
-            <button
-              onClick={() => {
-                if (document.documentElement.requestFullscreen) {
-                  document.documentElement.requestFullscreen().catch(() => {});
-                }
-              }}
-              className="px-5 py-3 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
-            >
-              <Maximize className="w-4 h-4" />
-              ورود به حالت تمام‌صفحه (Fullscreen)
-            </button>
-            <button
-              onClick={() => setIsPortrait(false)}
-              className="px-4 py-2 bg-slate-800 text-slate-400 rounded-xl text-xs font-semibold hover:text-white transition-colors"
-            >
-              ادامه در حالت عمودی
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Dedicated Three.js WebGL Canvas Mount Container */}
+      <div ref={canvasMountRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
       {/* Selection Box Overlay */}
       {isDragging && dragStart && dragEnd && (

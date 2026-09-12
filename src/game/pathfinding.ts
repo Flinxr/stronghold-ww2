@@ -94,18 +94,24 @@ export function calculateNextPosition(
   deltaTime: number,
   obstacleGrid?: boolean[][]
 ): { x: number; z: number; arrived: boolean; angle: number } {
-  const dist = distance2D(currentX, currentZ, targetX, targetZ);
-  const step = speed * deltaTime;
+  if (isNaN(currentX) || isNaN(currentZ) || isNaN(targetX) || isNaN(targetZ)) {
+    return { x: isNaN(currentX) ? 10 : currentX, z: isNaN(currentZ) ? 10 : currentZ, arrived: true, angle: 0 };
+  }
 
-  if (dist <= step || dist < 0.25) {
-    return { x: targetX, z: targetZ, arrived: true, angle: Math.atan2(targetZ - currentZ, targetX - currentX) };
+  const dt = Math.min(0.1, Math.max(0.001, deltaTime || 0.033));
+  const dist = distance2D(currentX, currentZ, targetX, targetZ);
+  const step = (speed || 2.0) * dt;
+
+  if (dist <= step || dist < 0.2) {
+    const angle = dist > 0.001 ? Math.atan2(targetZ - currentZ, targetX - currentX) : 0;
+    return { x: targetX, z: targetZ, arrived: true, angle };
   }
 
   // 1. Check if unit is currently trapped inside an obstacle tile (e.g. spawned there)
   if (obstacleGrid) {
     const currGx = Math.floor(currentX);
     const currGz = Math.floor(currentZ);
-    if (currGx >= 0 && currGx < MAP_SIZE && currGz >= 0 && currGz < MAP_SIZE && obstacleGrid[currGx][currGz]) {
+    if (currGx >= 0 && currGx < MAP_SIZE && currGz >= 0 && currGz < MAP_SIZE && obstacleGrid[currGx]?.[currGz]) {
       // Find nearest free adjacent tile to push unit out of building
       const neighbors = [
         { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 },
@@ -114,18 +120,20 @@ export function calculateNextPosition(
       for (const n of neighbors) {
         const nx = currGx + n.x;
         const nz = currGz + n.z;
-        if (nx >= 0 && nx < MAP_SIZE && nz >= 0 && nz < MAP_SIZE && !obstacleGrid[nx][nz]) {
+        if (nx >= 0 && nx < MAP_SIZE && nz >= 0 && nz < MAP_SIZE && !obstacleGrid[nx]?.[nz]) {
           const pushX = nx + 0.5;
           const pushZ = nz + 0.5;
           const angle = Math.atan2(pushZ - currentZ, pushX - currentX);
-          return { x: currentX + Math.cos(angle) * step, z: currentZ + Math.sin(angle) * step, arrived: false, angle };
+          const nextClampedX = Math.max(0.5, Math.min(MAP_SIZE - 0.5, currentX + Math.cos(angle) * step));
+          const nextClampedZ = Math.max(0.5, Math.min(MAP_SIZE - 0.5, currentZ + Math.sin(angle) * step));
+          return { x: nextClampedX, z: nextClampedZ, arrived: false, angle };
         }
       }
     }
   }
 
-  let dirX = (targetX - currentX) / dist;
-  let dirZ = (targetZ - currentZ) / dist;
+  let dirX = (targetX - currentX) / (dist || 1);
+  let dirZ = (targetZ - currentZ) / (dist || 1);
 
   let nextX = currentX + dirX * step;
   let nextZ = currentZ + dirZ * step;
@@ -135,7 +143,7 @@ export function calculateNextPosition(
     const gx = Math.floor(nextX);
     const gz = Math.floor(nextZ);
 
-    if (gx >= 0 && gx < MAP_SIZE && gz >= 0 && gz < MAP_SIZE && obstacleGrid[gx][gz]) {
+    if (gx >= 0 && gx < MAP_SIZE && gz >= 0 && gz < MAP_SIZE && obstacleGrid[gx]?.[gz]) {
       // Try steering angled steps around obstacle
       const altAngles = [Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, (3 * Math.PI) / 4, (-3 * Math.PI) / 4];
       let moved = false;
@@ -148,7 +156,7 @@ export function calculateNextPosition(
         const tgx = Math.floor(testX);
         const tgz = Math.floor(testZ);
 
-        if (tgx >= 0 && tgx < MAP_SIZE && tgz >= 0 && tgz < MAP_SIZE && !obstacleGrid[tgx][tgz]) {
+        if (tgx >= 0 && tgx < MAP_SIZE && tgz >= 0 && tgz < MAP_SIZE && !obstacleGrid[tgx]?.[tgz]) {
           nextX = testX;
           nextZ = testZ;
           moved = true;
@@ -165,6 +173,10 @@ export function calculateNextPosition(
       }
     }
   }
+
+  // Ensure within boundary
+  nextX = Math.max(0.5, Math.min(MAP_SIZE - 0.5, nextX));
+  nextZ = Math.max(0.5, Math.min(MAP_SIZE - 0.5, nextZ));
 
   const angle = Math.atan2(dirZ, dirX);
   return { x: nextX, z: nextZ, arrived: false, angle };

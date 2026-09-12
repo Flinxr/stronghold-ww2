@@ -119,6 +119,8 @@ export interface UnitInstance {
 
 export interface Projectile {
   id: string;
+  sourceUnitId?: string;
+  sourcePlayerId?: number;
   startX: number;
   startY: number;
   startZ: number;

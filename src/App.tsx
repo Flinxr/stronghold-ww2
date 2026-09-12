@@ -30,6 +30,7 @@ import {
   getDistanceToBuilding,
   getBuildingCenter,
 } from './game/pathfinding';
+import { computeWorldChecksum, formatChecksum } from './game/sync';
 import { soundManager } from './game/audio';
 import { getSocket } from './services/socket';
 
@@ -54,7 +55,7 @@ function getBuildingPlayerId(b: BuildingInstance): number {
 }
 
 // Helper to generate map world based on active player slots and startingGold
-function generateInitialWorld(activeSlots: number[], startingGold: number, isOnline: boolean) {
+function generateInitialWorld(activeSlots: number[], startingGold: number, isOnline: boolean, selfPlayerId: number = 1) {
   const initialRes: Resources = {
     ...INITIAL_RESOURCES,
     gold: startingGold,
@@ -68,7 +69,7 @@ function generateInitialWorld(activeSlots: number[], startingGold: number, isOnl
     if (!pConfig) return;
 
     // In offline mode, p2..p4 are AI enemies. In online mode, all bases belong to player slots.
-    const isEnemy = isOnline ? false : pId !== 1;
+    const isEnemy = pId !== selfPlayerId;
 
     const kX = pConfig.keepGridX;
     const kZ = pConfig.keepGridZ;
@@ -77,24 +78,23 @@ function generateInitialWorld(activeSlots: number[], startingGold: number, isOnl
     const offsetZ = kZ > 40 ? -4 : 4;
 
     initialBuildings.push(
-      { id: `keep_p${pId}`, type: 'keep', gridX: kX, gridZ: kZ, hp: BUILDINGS_CONFIG.keep.hp, maxHp: BUILDINGS_CONFIG.keep.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1 },
-      { id: `house_p${pId}`, type: 'house', gridX: kX + offsetX, gridZ: kZ, hp: BUILDINGS_CONFIG.house.hp, maxHp: BUILDINGS_CONFIG.house.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1 },
-      { id: `barracks_p${pId}`, type: 'barracks', gridX: kX, gridZ: kZ + offsetZ, hp: BUILDINGS_CONFIG.barracks.hp, maxHp: BUILDINGS_CONFIG.barracks.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1 },
-      { id: `tower_p${pId}`, type: 'tower', gridX: kX + offsetX, gridZ: kZ + offsetZ, hp: BUILDINGS_CONFIG.tower.hp, maxHp: BUILDINGS_CONFIG.tower.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1 }
+      { id: `keep_p${pId}`, type: 'keep', gridX: kX, gridZ: kZ, hp: BUILDINGS_CONFIG.keep.hp, maxHp: BUILDINGS_CONFIG.keep.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1, createdAt: Date.now() },
+      { id: `house_p${pId}`, type: 'house', gridX: kX + offsetX, gridZ: kZ, hp: BUILDINGS_CONFIG.house.hp, maxHp: BUILDINGS_CONFIG.house.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1, createdAt: Date.now() },
+      { id: `barracks_p${pId}`, type: 'barracks', gridX: kX, gridZ: kZ + offsetZ, hp: BUILDINGS_CONFIG.barracks.hp, maxHp: BUILDINGS_CONFIG.barracks.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1, createdAt: Date.now() },
+      { id: `tower_p${pId}`, type: 'tower', gridX: kX + offsetX, gridZ: kZ + offsetZ, hp: BUILDINGS_CONFIG.tower.hp, maxHp: BUILDINGS_CONFIG.tower.maxHp, isEnemy, playerId: pId, isConstructed: true, constructProgress: 1, createdAt: Date.now() }
     );
 
-    // 5 Initial Soldiers per player (2 Swordsmen/Grunts, 2 Spearmen/Grunts, 1 Archer)
-    const isUnitEnemy = isOnline ? false : pId !== 1;
-    const uType1 = isUnitEnemy ? 'enemy_grunt' : 'swordsman';
-    const uType2 = isUnitEnemy ? 'enemy_grunt' : 'spearman';
-    const uType3 = isUnitEnemy ? 'enemy_archer' : 'archer';
+    // 5 Initial Soldiers per player (2 Swordsmen, 2 Spearmen, 1 Archer)
+    const uType1: UnitType = isOnline ? 'swordsman' : (isEnemy ? 'enemy_grunt' : 'swordsman');
+    const uType2: UnitType = isOnline ? 'spearman' : (isEnemy ? 'enemy_grunt' : 'spearman');
+    const uType3: UnitType = isOnline ? 'archer' : (isEnemy ? 'enemy_archer' : 'archer');
 
     initialUnits.push(
-      { id: `u_p${pId}_1`, type: uType1 as UnitType, isEnemy: isUnitEnemy, playerId: pId, x: kX + 1.5, z: kZ + offsetZ + 1.5, hp: UNITS_CONFIG[uType1 as UnitType].hp, maxHp: UNITS_CONFIG[uType1 as UnitType].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0 },
-      { id: `u_p${pId}_2`, type: uType1 as UnitType, isEnemy: isUnitEnemy, playerId: pId, x: kX + 2.5, z: kZ + offsetZ + 1.5, hp: UNITS_CONFIG[uType1 as UnitType].hp, maxHp: UNITS_CONFIG[uType1 as UnitType].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0 },
-      { id: `u_p${pId}_3`, type: uType2 as UnitType, isEnemy: isUnitEnemy, playerId: pId, x: kX + offsetX + 1.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType2 as UnitType].hp, maxHp: UNITS_CONFIG[uType2 as UnitType].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0 },
-      { id: `u_p${pId}_4`, type: uType2 as UnitType, isEnemy: isUnitEnemy, playerId: pId, x: kX + offsetX + 2.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType2 as UnitType].hp, maxHp: UNITS_CONFIG[uType2 as UnitType].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0 },
-      { id: `u_p${pId}_5`, type: uType3 as UnitType, isEnemy: isUnitEnemy, playerId: pId, x: kX + 1.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType3 as UnitType].hp, maxHp: UNITS_CONFIG[uType3 as UnitType].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0 }
+      { id: `u_p${pId}_1`, type: uType1, isEnemy, playerId: pId, x: kX + 1.5, z: kZ + offsetZ + 1.5, hp: UNITS_CONFIG[uType1].hp, maxHp: UNITS_CONFIG[uType1].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0, createdAt: Date.now() },
+      { id: `u_p${pId}_2`, type: uType1, isEnemy, playerId: pId, x: kX + 2.5, z: kZ + offsetZ + 1.5, hp: UNITS_CONFIG[uType1].hp, maxHp: UNITS_CONFIG[uType1].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0, createdAt: Date.now() },
+      { id: `u_p${pId}_3`, type: uType2, isEnemy, playerId: pId, x: kX + offsetX + 1.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType2].hp, maxHp: UNITS_CONFIG[uType2].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0, createdAt: Date.now() },
+      { id: `u_p${pId}_4`, type: uType2, isEnemy, playerId: pId, x: kX + offsetX + 2.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType2].hp, maxHp: UNITS_CONFIG[uType2].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0, createdAt: Date.now() },
+      { id: `u_p${pId}_5`, type: uType3, isEnemy, playerId: pId, x: kX + 1.5, z: kZ + 1.5, hp: UNITS_CONFIG[uType3].hp, maxHp: UNITS_CONFIG[uType3].maxHp, state: 'idle', lastAttackTime: 0, rotation: 0, createdAt: Date.now() }
     );
   });
 
@@ -110,6 +110,13 @@ export default function App() {
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
   // --- Online Multiplayer & Lobby State ---
+  const [playerName, setPlayerName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('rts_commander_name') || `فرمانده ${Math.floor(Math.random() * 900 + 100)}`;
+    } catch {
+      return `فرمانده ${Math.floor(Math.random() * 900 + 100)}`;
+    }
+  });
   const [publicLobbies, setPublicLobbies] = useState<PublicLobbyInfo[]>([]);
   const [currentLobby, setCurrentLobby] = useState<LobbyRoomData | null>(null);
   const [selfPlayerId, setSelfPlayerId] = useState<number>(1);
@@ -167,6 +174,13 @@ export default function App() {
     unitsRecruited: 3,
     timeSurvivedSec: 0,
   });
+
+  // State synchronization & deterministic hash checks
+  const [checksumHex, setChecksumHex] = useState<string>('');
+  const [isDesyncRecovering, setIsDesyncRecovering] = useState<boolean>(false);
+  const lastSyncChecksumRef = useRef<number>(0);
+  const desyncCountRef = useRef<number>(0);
+  const lastSyncRequestTimeRef = useRef<number>(0);
 
   const lastTimeRef = useRef<number>(performance.now());
   const resourceTimerRef = useRef<number>(0);
@@ -235,12 +249,15 @@ export default function App() {
       const mySlot = lobby.players.find((p) => p.id === socket.id)?.playerId || 1;
 
       setSelfPlayerId(mySlot);
+      selfPlayerIdRef.current = mySlot;
       setIsOnline(true);
+      isOnlineRef.current = true;
       setCurrentLobby(lobby);
+      currentLobbyRef.current = lobby;
 
       // Generate initial map based on active player slots in lobby
       const activeSlots = lobby.players.map((p) => p.playerId);
-      const world = generateInitialWorld(activeSlots, lobby.startingGold, true);
+      const world = generateInitialWorld(activeSlots, lobby.startingGold, true, mySlot);
       setResources(world.initialRes);
       setBuildings(world.initialBuildings);
       setUnits(world.initialUnits);
@@ -259,6 +276,34 @@ export default function App() {
       setInGameChatMessages([]);
       setShowLobbyListModal(false);
       setShowCreateLobbyModal(false);
+    });
+
+    // REJOIN ONGOING ONLINE GAME MATCH
+    socket.on('game:rejoined', (data: { lobby: LobbyRoomData; selfPlayerId: number; isHost: boolean }) => {
+      const lobby = data.lobby;
+      const mySlot = data.selfPlayerId || 1;
+
+      setSelfPlayerId(mySlot);
+      selfPlayerIdRef.current = mySlot;
+      setIsOnline(true);
+      isOnlineRef.current = true;
+      setCurrentLobby(lobby);
+      currentLobbyRef.current = lobby;
+
+      // Ask host/peers to broadcast full fresh world state immediately
+      socket.emit('game:request_sync', { lobbyId: lobby.id });
+
+      const pCfg = PLAYERS_CONFIG[mySlot] || PLAYERS_CONFIG[1];
+      setCameraPos({ x: pCfg.keepGridX + 1.5, z: pCfg.keepGridZ + 1.5 });
+
+      setGameMode('playing');
+      setGameSpeed(1);
+      setShowLobbyListModal(false);
+      setShowCreateLobbyModal(false);
+    });
+
+    socket.on('lobby:rejoin_failed', (data: { error: string }) => {
+      alert(data.error || 'خطا در اتصال مجدد به لابی');
     });
 
     // Remote Real-Time Action Listeners
@@ -298,15 +343,16 @@ export default function App() {
         const spawnX = action.spawnX ?? Math.max(1, Math.min(MAP_SIZE - 2, centerX + Math.cos(angle) * radius));
         const spawnZ = action.spawnZ ?? Math.max(1, Math.min(MAP_SIZE - 2, centerZ + Math.sin(angle) * radius));
 
+        const isEnemy = pId !== selfPlayerIdRef.current;
         const newUnit: UnitInstance = {
           id: uId,
           type: action.type,
-          isEnemy: false,
+          isEnemy,
           playerId: pId,
           x: spawnX,
           z: spawnZ,
-          hp: UNITS_CONFIG[action.type].hp,
-          maxHp: UNITS_CONFIG[action.type].maxHp,
+          hp: UNITS_CONFIG[action.type]?.hp || 100,
+          maxHp: UNITS_CONFIG[action.type]?.maxHp || 100,
           state: 'idle',
           lastAttackTime: 0,
           rotation: angle + Math.PI / 2,
@@ -330,7 +376,7 @@ export default function App() {
           gridZ: action.gridZ,
           hp: bConfig.hp,
           maxHp: bConfig.maxHp,
-          isEnemy: false,
+          isEnemy: action.playerId !== selfPlayerIdRef.current,
           playerId: action.playerId,
           isConstructed: true,
           constructProgress: 1,
@@ -348,132 +394,213 @@ export default function App() {
       );
     });
 
-    socket.on('game:sync_state', (remoteState: { units: UnitInstance[]; buildings: BuildingInstance[] }) => {
-      const sock = getSocket();
-      const isHost = currentLobbyRef.current?.players.find((p) => p.id === sock.id)?.isHost;
-      if (isHost) return; // Host is master referee, ignore broadcast echo
+    socket.on(
+      'game:sync_state',
+      (remoteState: {
+        checksum?: number;
+        tick?: number;
+        isFullSync?: boolean;
+        units: UnitInstance[];
+        buildings: BuildingInstance[];
+      }) => {
+        const sock = getSocket();
+        const isHost = currentLobbyRef.current?.players.find((p) => p.id === sock.id)?.isHost;
+        if (isHost) return; // Host is master simulation referee, ignore broadcast echo
 
-      if (remoteState.buildings) {
-        setBuildings((localB) => {
-          const remoteBMap = new Map(remoteState.buildings.map((b) => [b.id, b]));
-          const remoteBGridMap = new Map(remoteState.buildings.map((b) => [`${b.gridX}_${b.gridZ}`, b]));
-
-          const updatedB = localB
-            .filter((lb) => {
-              if (remoteBMap.has(lb.id) || remoteBGridMap.has(`${lb.gridX}_${lb.gridZ}`)) return true;
-              // Retain recently constructed buildings (< 3.5s) to prevent disappearing during network transit
-              return Date.now() - (lb.createdAt || 0) < 3500;
-            })
-            .map((lb) => {
-              const rb = remoteBMap.get(lb.id) || remoteBGridMap.get(`${lb.gridX}_${lb.gridZ}`);
-              if (rb) {
-                const wasAlive = lb.hp > 0;
-                if (wasAlive && rb.hp <= 0) {
-                  soundManager.playBuildingDestroyed();
-                }
+        // If host sent an authoritative forced full sync (reconnection or desync resolution)
+        if (remoteState.isFullSync) {
+          if (remoteState.buildings) {
+            setBuildings(
+              remoteState.buildings.map((rb) => {
+                const bPid = rb.playerId ?? 1;
+                const bCfg = BUILDINGS_CONFIG[rb.type || 'keep'] || BUILDINGS_CONFIG.keep;
                 return {
-                  ...lb,
                   id: rb.id,
-                  type: rb.type || lb.type,
+                  type: rb.type || 'keep',
+                  gridX: rb.gridX,
+                  gridZ: rb.gridZ,
                   hp: rb.hp,
-                  maxHp: rb.maxHp || lb.maxHp,
-                  isConstructed: rb.isConstructed ?? lb.isConstructed,
-                  constructProgress: rb.constructProgress ?? lb.constructProgress,
-                  repairing: rb.repairing ?? lb.repairing,
+                  maxHp: rb.maxHp || bCfg.maxHp,
+                  isEnemy: bPid !== selfPlayerIdRef.current,
+                  playerId: bPid,
+                  isConstructed: rb.isConstructed ?? true,
+                  constructProgress: rb.constructProgress ?? 1,
+                  repairing: rb.repairing ?? false,
+                  createdAt: Date.now(),
                 };
-              }
-              return lb;
-            });
+              })
+            );
+          }
 
-          const existingIds = new Set(updatedB.map((b) => b.id));
-          const existingGrids = new Set(updatedB.map((b) => `${b.gridX}_${b.gridZ}`));
-
-          remoteState.buildings.forEach((rb) => {
-            if (!existingIds.has(rb.id) && !existingGrids.has(`${rb.gridX}_${rb.gridZ}`) && rb.hp > 0) {
-              const bCfg = BUILDINGS_CONFIG[rb.type || 'keep'] || BUILDINGS_CONFIG.keep;
-              updatedB.push({
-                id: rb.id,
-                type: rb.type || 'keep',
-                gridX: rb.gridX,
-                gridZ: rb.gridZ,
-                hp: rb.hp,
-                maxHp: rb.maxHp || bCfg.maxHp,
-                isEnemy: rb.isEnemy ?? false,
-                playerId: rb.playerId ?? 1,
-                isConstructed: rb.isConstructed ?? true,
-                constructProgress: rb.constructProgress ?? 1,
-                repairing: rb.repairing ?? false,
-                createdAt: Date.now(),
-              });
-            }
-          });
-
-          return updatedB;
-        });
-      }
-
-      if (remoteState.units) {
-        setUnits((localUnits) => {
-          const remoteUnitMap = new Map(remoteState.units.map((u) => [u.id, u]));
-
-          const updatedUnits = localUnits
-            .filter((lu) => {
-              const ru = remoteUnitMap.get(lu.id);
-              if (ru && ru.hp <= 0) return false;
-              if (remoteUnitMap.has(lu.id)) return true;
-              return Date.now() - (lu.createdAt || 0) < 3500;
-            })
-            .map((lu) => {
-              const ru = remoteUnitMap.get(lu.id);
-              if (ru) {
-                const dist = Math.hypot(lu.x - ru.x, lu.z - ru.z);
-                const lerpX = dist > 2.5 ? ru.x : lu.x * 0.6 + ru.x * 0.4;
-                const lerpZ = dist > 2.5 ? ru.z : lu.z * 0.6 + ru.z * 0.4;
+          if (remoteState.units) {
+            setUnits(
+              remoteState.units.map((ru) => {
+                const uPid = ru.playerId ?? 1;
+                const uCfg = UNITS_CONFIG[ru.type || 'swordsman'] || UNITS_CONFIG.swordsman;
                 return {
-                  ...lu,
-                  x: lerpX,
-                  z: lerpZ,
+                  id: ru.id,
+                  type: ru.type || 'swordsman',
+                  isEnemy: uPid !== selfPlayerIdRef.current,
+                  playerId: uPid,
+                  x: ru.x,
+                  z: ru.z,
                   hp: ru.hp,
-                  maxHp: ru.maxHp || lu.maxHp,
-                  state: ru.state || lu.state,
-                  rotation: ru.rotation ?? lu.rotation,
+                  maxHp: ru.maxHp || uCfg.maxHp,
+                  state: ru.state || 'idle',
+                  lastAttackTime: 0,
+                  rotation: ru.rotation || 0,
                   targetX: ru.targetX,
                   targetZ: ru.targetZ,
                   targetEntityId: ru.targetEntityId,
-                  userMoveCommand: ru.userMoveCommand ?? lu.userMoveCommand,
+                  userMoveCommand: ru.userMoveCommand,
+                  createdAt: Date.now(),
                 };
+              })
+            );
+          }
+
+          if (remoteState.checksum !== undefined) {
+            lastSyncChecksumRef.current = remoteState.checksum;
+            setChecksumHex(formatChecksum(remoteState.checksum));
+          }
+          desyncCountRef.current = 0;
+          setIsDesyncRecovering(false);
+          return;
+        }
+
+        // Standard Continuous Sync with Deterministic Checksum Verification
+        let nextBuildings: BuildingInstance[] = [];
+        if (remoteState.buildings) {
+          setBuildings((localB) => {
+            const remoteBMap = new Map(remoteState.buildings.map((b) => [b.id, b]));
+            const remoteBGridMap = new Map(remoteState.buildings.map((b) => [`${b.gridX}_${b.gridZ}`, b]));
+
+            const updatedB = localB
+              .filter((lb) => {
+                if (remoteBMap.has(lb.id) || remoteBGridMap.has(`${lb.gridX}_${lb.gridZ}`)) return true;
+                return Date.now() - (lb.createdAt || 0) < 3000;
+              })
+              .map((lb) => {
+                const rb = remoteBMap.get(lb.id) || remoteBGridMap.get(`${lb.gridX}_${lb.gridZ}`);
+                if (rb) {
+                  const wasAlive = lb.hp > 0;
+                  if (wasAlive && rb.hp <= 0) {
+                    soundManager.playBuildingDestroyed();
+                  }
+                  const bPid = rb.playerId ?? lb.playerId ?? 1;
+                  return {
+                    ...lb,
+                    id: rb.id,
+                    type: rb.type || lb.type,
+                    hp: rb.hp,
+                    maxHp: rb.maxHp || lb.maxHp,
+                    isEnemy: bPid !== selfPlayerIdRef.current,
+                    playerId: bPid,
+                    isConstructed: rb.isConstructed ?? lb.isConstructed,
+                    constructProgress: rb.constructProgress ?? lb.constructProgress,
+                    repairing: rb.repairing ?? lb.repairing,
+                  };
+                }
+                return lb;
+              });
+
+            const existingIds = new Set(updatedB.map((b) => b.id));
+            const existingGrids = new Set(updatedB.map((b) => `${b.gridX}_${b.gridZ}`));
+
+            remoteState.buildings.forEach((rb) => {
+              if (!existingIds.has(rb.id) && !existingGrids.has(`${rb.gridX}_${rb.gridZ}`) && rb.hp > 0) {
+                const bCfg = BUILDINGS_CONFIG[rb.type || 'keep'] || BUILDINGS_CONFIG.keep;
+                const bPid = rb.playerId ?? 1;
+                updatedB.push({
+                  id: rb.id,
+                  type: rb.type || 'keep',
+                  gridX: rb.gridX,
+                  gridZ: rb.gridZ,
+                  hp: rb.hp,
+                  maxHp: rb.maxHp || bCfg.maxHp,
+                  isEnemy: bPid !== selfPlayerIdRef.current,
+                  playerId: bPid,
+                  isConstructed: rb.isConstructed ?? true,
+                  constructProgress: rb.constructProgress ?? 1,
+                  repairing: rb.repairing ?? false,
+                  createdAt: Date.now(),
+                });
               }
-              return lu;
             });
 
-          const existingUnitIds = new Set(updatedUnits.map((u) => u.id));
-          remoteState.units.forEach((ru) => {
-            if (!existingUnitIds.has(ru.id) && ru.hp > 0) {
-              const uCfg = UNITS_CONFIG[ru.type || 'swordsman'] || UNITS_CONFIG.swordsman;
-              updatedUnits.push({
-                id: ru.id,
-                type: ru.type || 'swordsman',
-                isEnemy: ru.isEnemy ?? false,
-                playerId: ru.playerId ?? 1,
-                x: ru.x,
-                z: ru.z,
-                hp: ru.hp,
-                maxHp: ru.maxHp || uCfg.maxHp,
-                state: ru.state || 'idle',
-                lastAttackTime: 0,
-                rotation: ru.rotation || 0,
-                targetX: ru.targetX,
-                targetZ: ru.targetZ,
-                targetEntityId: ru.targetEntityId,
-                createdAt: Date.now(),
-              });
-            }
+            nextBuildings = updatedB.filter((b) => b.hp > 0);
+            return nextBuildings;
           });
+        }
 
-          return updatedUnits;
-        });
+        if (remoteState.units) {
+          setUnits((localUnits) => {
+            const remoteUnitMap = new Map(remoteState.units.map((u) => [u.id, u]));
+
+            const updatedUnits = localUnits
+              .filter((lu) => {
+                const ru = remoteUnitMap.get(lu.id);
+                if (ru && ru.hp <= 0) return false;
+                if (remoteUnitMap.has(lu.id)) return true;
+                return Date.now() - (lu.createdAt || 0) < 3000;
+              })
+              .map((lu) => {
+                const ru = remoteUnitMap.get(lu.id);
+                if (ru) {
+                  const dist = Math.hypot(lu.x - ru.x, lu.z - ru.z);
+                  const lerpX = dist > 2.0 ? ru.x : lu.x * 0.35 + ru.x * 0.65;
+                  const lerpZ = dist > 2.0 ? ru.z : lu.z * 0.35 + ru.z * 0.65;
+                  const uPid = ru.playerId ?? lu.playerId ?? 1;
+                  return {
+                    ...lu,
+                    x: lerpX,
+                    z: lerpZ,
+                    hp: ru.hp,
+                    maxHp: ru.maxHp || lu.maxHp,
+                    isEnemy: uPid !== selfPlayerIdRef.current,
+                    playerId: uPid,
+                    state: ru.state || lu.state,
+                    rotation: ru.rotation ?? lu.rotation,
+                    targetX: ru.targetX,
+                    targetZ: ru.targetZ,
+                    targetEntityId: ru.targetEntityId,
+                    userMoveCommand: ru.userMoveCommand ?? lu.userMoveCommand,
+                  };
+                }
+                return lu;
+              });
+
+            const existingUnitIds = new Set(updatedUnits.map((u) => u.id));
+            remoteState.units.forEach((ru) => {
+              if (!existingUnitIds.has(ru.id) && ru.hp > 0) {
+                const uCfg = UNITS_CONFIG[ru.type || 'swordsman'] || UNITS_CONFIG.swordsman;
+                const uPid = ru.playerId ?? 1;
+                updatedUnits.push({
+                  id: ru.id,
+                  type: ru.type || 'swordsman',
+                  isEnemy: uPid !== selfPlayerIdRef.current,
+                  playerId: uPid,
+                  x: ru.x,
+                  z: ru.z,
+                  hp: ru.hp,
+                  maxHp: ru.maxHp || uCfg.maxHp,
+                  state: ru.state || 'idle',
+                  lastAttackTime: 0,
+                  rotation: ru.rotation || 0,
+                  targetX: ru.targetX,
+                  targetZ: ru.targetZ,
+                  targetEntityId: ru.targetEntityId,
+                  createdAt: Date.now(),
+                });
+              }
+            });
+
+            const nextLivingUnits = updatedUnits.filter((u) => u.hp > 0);
+            return nextLivingUnits;
+          });
+        }
       }
-    });
+    );
 
     // Projectile Synchronization across online players
     socket.on('game:projectile', (proj: Projectile) => {
@@ -489,15 +616,22 @@ export default function App() {
       }
     });
 
-    // Reconnection / Sync state recovery
+    // Reconnection / Sync state recovery with deterministic hash
     socket.on('game:request_sync', () => {
       const sock = getSocket();
       const isHost = currentLobbyRef.current?.players.find((p) => p.id === sock.id)?.isHost;
       if (isHost && currentLobbyRef.current) {
+        const aliveU = unitsRef.current.filter((u) => u.hp > 0);
+        const aliveB = buildingsRef.current.filter((b) => b.hp > 0);
+        const checksum = computeWorldChecksum(aliveU, aliveB);
+
         sock.emit('game:sync_state', {
           lobbyId: currentLobbyRef.current.id,
           state: {
-            units: unitsRef.current.map((u) => ({
+            isFullSync: true,
+            checksum,
+            tick: Date.now(),
+            units: aliveU.map((u) => ({
               id: u.id,
               type: u.type,
               x: Math.round(u.x * 100) / 100,
@@ -513,7 +647,7 @@ export default function App() {
               userMoveCommand: u.userMoveCommand,
               rotation: Math.round(u.rotation * 100) / 100,
             })),
-            buildings: buildingsRef.current.map((b) => ({
+            buildings: aliveB.map((b) => ({
               id: b.id,
               type: b.type,
               gridX: b.gridX,
@@ -603,6 +737,8 @@ export default function App() {
       socket.off('game:player_defeat');
       socket.off('game:player_left');
       socket.off('game:host_migrated');
+      socket.off('game:rejoined');
+      socket.off('lobby:rejoin_failed');
       socket.off('game:chat_message');
     };
   }, []);
@@ -735,54 +871,61 @@ export default function App() {
       // Update Time Survived Stats
       setStats((prev) => ({ ...prev, timeSurvivedSec: prev.timeSurvivedSec + dtSec }));
 
-      // Optimized Host State Broadcast (~11 Hz / 90ms) in Online Mode with coordinate rounding
-      if (isOnlineRef.current && currentLobbyRef.current) {
+      // Optimized High-Precision Host State Broadcast (20 Hz / 50ms) in Online Mode
+      const isMasterHost = !isOnlineRef.current || Boolean(currentLobbyRef.current?.players.find((p) => p.id === getSocket().id)?.isHost);
+
+      if (isOnlineRef.current && currentLobbyRef.current && isMasterHost) {
         const socket = getSocket();
-        const isHost = currentLobbyRef.current.players.find((p) => p.id === socket.id)?.isHost;
-        if (isHost) {
-          syncTimerRef.current += dtSec;
-          if (syncTimerRef.current >= 0.09) {
-            syncTimerRef.current = 0;
-            socket.emit('game:sync_state', {
-              lobbyId: currentLobbyRef.current.id,
-              state: {
-                units: unitsRef.current.map((u) => ({
-                  id: u.id,
-                  type: u.type,
-                  x: Math.round(u.x * 100) / 100,
-                  z: Math.round(u.z * 100) / 100,
-                  hp: Math.round(u.hp),
-                  maxHp: u.maxHp,
-                  state: u.state,
-                  playerId: u.playerId,
-                  isEnemy: u.isEnemy,
-                  targetX: u.targetX !== undefined ? Math.round(u.targetX * 100) / 100 : undefined,
-                  targetZ: u.targetZ !== undefined ? Math.round(u.targetZ * 100) / 100 : undefined,
-                  targetEntityId: u.targetEntityId,
-                  userMoveCommand: u.userMoveCommand,
-                  rotation: Math.round(u.rotation * 100) / 100,
-                })),
-                buildings: buildingsRef.current.map((b) => ({
-                  id: b.id,
-                  type: b.type,
-                  gridX: b.gridX,
-                  gridZ: b.gridZ,
-                  hp: Math.round(b.hp),
-                  maxHp: b.maxHp,
-                  playerId: b.playerId,
-                  isEnemy: b.isEnemy,
-                  isConstructed: b.isConstructed,
-                  constructProgress: b.constructProgress,
-                  repairing: b.repairing,
-                })),
-              },
-            });
-          }
+        syncTimerRef.current += dtSec;
+        if (syncTimerRef.current >= 0.05) {
+          syncTimerRef.current = 0;
+          const aliveU = unitsRef.current.filter((u) => u.hp > 0);
+          const aliveB = buildingsRef.current.filter((b) => b.hp > 0);
+          const worldChecksum = computeWorldChecksum(aliveU, aliveB);
+          lastSyncChecksumRef.current = worldChecksum;
+          setChecksumHex(formatChecksum(worldChecksum));
+
+          socket.emit('game:sync_state', {
+            lobbyId: currentLobbyRef.current.id,
+            state: {
+              checksum: worldChecksum,
+              tick: Math.floor(now),
+              units: aliveU.map((u) => ({
+                id: u.id,
+                type: u.type,
+                x: Math.round(u.x * 100) / 100,
+                z: Math.round(u.z * 100) / 100,
+                hp: Math.round(u.hp),
+                maxHp: u.maxHp,
+                state: u.state,
+                playerId: u.playerId,
+                isEnemy: u.isEnemy,
+                targetX: u.targetX !== undefined ? Math.round(u.targetX * 100) / 100 : undefined,
+                targetZ: u.targetZ !== undefined ? Math.round(u.targetZ * 100) / 100 : undefined,
+                targetEntityId: u.targetEntityId,
+                userMoveCommand: u.userMoveCommand,
+                rotation: Math.round(u.rotation * 100) / 100,
+              })),
+              buildings: aliveB.map((b) => ({
+                id: b.id,
+                type: b.type,
+                gridX: b.gridX,
+                gridZ: b.gridZ,
+                hp: Math.round(b.hp),
+                maxHp: b.maxHp,
+                playerId: b.playerId,
+                isEnemy: b.isEnemy,
+                isConstructed: b.isConstructed,
+                constructProgress: b.constructProgress,
+                repairing: b.repairing,
+              })),
+            },
+          });
         }
       }
 
       // 1. Wave Countdown Timer (Offline Mode)
-      if (!isOnline) {
+      if (!isOnlineRef.current) {
         setWaveTimerSec((prevTimer) => {
           if (prevTimer <= dtSec) {
             if (!waveActive) {
@@ -847,6 +990,41 @@ export default function App() {
 
           return currentBuildings;
         });
+      }
+
+      // Guest clients in multiplayer: do not run local conflicting AI/simulation, only smooth projectiles & status
+      if (!isMasterHost) {
+        setProjectiles((currentProjs) => {
+          return currentProjs
+            .map((p) => {
+              const dist = distance2D(p.startX, p.startZ, p.targetX, p.targetZ);
+              const nextProg = p.progress + (p.speed * dtSec) / (dist || 1);
+              return { ...p, progress: nextProg };
+            })
+            .filter((p) => p.progress < 1);
+        });
+
+        // Guest Keep Survival Evaluation
+        const curB = buildingsRef.current;
+        const myKeep = curB.find((b) => b.type === 'keep' && getBuildingPlayerId(b) === selfPlayerId);
+        const enemyKeeps = curB.filter((b) => b.type === 'keep' && getBuildingPlayerId(b) !== selfPlayerId && b.hp > 0);
+
+        if (myKeep && myKeep.hp <= 0) {
+          setGameMode('gameover');
+          soundManager.playDefeat();
+          if (isOnlineRef.current && currentLobbyRef.current) {
+            const me = currentLobbyRef.current.players.find((p) => p.id === getSocket().id);
+            getSocket().emit('game:player_defeat', {
+              lobbyId: currentLobbyRef.current.id,
+              defeatedPlayerId: selfPlayerIdRef.current,
+              defeatedName: me?.name || `فرمانده ${selfPlayerIdRef.current}`,
+            });
+          }
+        } else if (enemyKeeps.length === 0 && curB.some((b) => b.type === 'keep' && getBuildingPlayerId(b) !== selfPlayerId)) {
+          setGameMode('victory');
+          soundManager.playVictory();
+        }
+        return;
       }
 
       // 3. Obstacle Grid for Unit Pathfinding
@@ -960,80 +1138,77 @@ export default function App() {
 
                 if (uConfig.isRanged) {
                   let pType: 'arrow' | 'cannon' | 'mortar' | 'bullet' | 'rpg' | 'sniper' = 'bullet';
-                  let pSpeed = 24.0;
-                  let pArc = 0.1;
+                  let pSpeed = 42.0;
+                  let pArc = 0.02;
 
                   if (u.type === 'artillery_tank' || u.type === 'knight') {
                     pType = 'mortar';
-                    pSpeed = 10.0;
-                    pArc = 6.0;
+                    pSpeed = 12.0;
+                    pArc = 4.5;
                   } else if (u.type === 'tank') {
                     pType = 'cannon';
-                    pSpeed = 22.0;
-                    pArc = 0.3;
+                    pSpeed = 30.0;
+                    pArc = 0.25;
                   } else if (u.type === 'spearman') {
                     pType = 'rpg';
-                    pSpeed = 18.0;
-                    pArc = 0.2;
+                    pSpeed = 24.0;
+                    pArc = 0.15;
                   } else if (u.type === 'archer') {
                     pType = 'sniper';
-                    pSpeed = 35.0;
-                    pArc = 0.05;
+                    pSpeed = 55.0;
+                    pArc = 0.01;
                   }
 
-                  const isMasterHost = !isOnlineRef.current || (currentLobbyRef.current && currentLobbyRef.current.players.find((p) => p.id === getSocket().id)?.isHost);
-                  const isMyUnit = uPid === selfPlayerIdRef.current;
-                  const shouldSpawn = !isOnlineRef.current || isMyUnit || (isMasterHost && !currentLobbyRef.current?.players.some((p) => p.playerId === uPid));
+                  if (u.type === 'artillery_tank' || u.type === 'knight' || u.type === 'tank' || u.type === 'spearman') {
+                    soundManager.playExplosion();
+                  } else {
+                    soundManager.playBowShot();
+                  }
 
-                  if (shouldSpawn) {
-                    if (u.type === 'artillery_tank' || u.type === 'knight' || u.type === 'tank' || u.type === 'spearman') {
-                      soundManager.playExplosion();
-                    } else {
-                      soundManager.playBowShot();
-                    }
+                  const newProj: Projectile = {
+                    id: `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                    sourceUnitId: u.id,
+                    sourcePlayerId: uPid,
+                    startX: u.x,
+                    startY: u.type === 'tank' || u.type === 'artillery_tank' ? 0.9 : 0.6,
+                    startZ: u.z,
+                    targetX: targetCenterPos.x,
+                    targetY: 0.5,
+                    targetZ: targetCenterPos.z,
+                    targetUnitId: targetEntity!.isBuilding ? undefined : targetEntity!.id,
+                    targetBuildingId: targetEntity!.isBuilding ? targetEntity!.id : undefined,
+                    damage: appliedDmg,
+                    speed: pSpeed,
+                    progress: 0,
+                    isEnemy: uPid !== selfPlayerIdRef.current,
+                    type: pType,
+                    arcHeight: pArc,
+                  };
 
-                    const newProj: Projectile = {
-                      id: `proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                      startX: u.x,
-                      startY: u.type === 'tank' || u.type === 'artillery_tank' ? 0.9 : 0.6,
-                      startZ: u.z,
-                      targetX: targetCenterPos.x,
-                      targetY: 0.5,
-                      targetZ: targetCenterPos.z,
-                      targetUnitId: targetEntity!.isBuilding ? undefined : targetEntity!.id,
-                      targetBuildingId: targetEntity!.isBuilding ? targetEntity!.id : undefined,
-                      damage: appliedDmg,
-                      speed: pSpeed,
-                      progress: 0,
-                      isEnemy: uPid !== selfPlayerIdRef.current,
-                      type: pType,
-                      arcHeight: pArc,
-                    };
+                  setProjectiles((projs) => [...projs, newProj]);
 
-                    setProjectiles((projs) => [...projs, newProj]);
-
-                    if (isOnlineRef.current && currentLobbyRef.current) {
-                      getSocket().emit('game:projectile', {
-                        lobbyId: currentLobbyRef.current.id,
-                        projectile: newProj,
-                      });
-                    }
+                  if (isOnlineRef.current && currentLobbyRef.current) {
+                    getSocket().emit('game:projectile', {
+                      lobbyId: currentLobbyRef.current.id,
+                      projectile: newProj,
+                    });
                   }
                 } else {
                   soundManager.playSwordHit();
 
-                  const isMasterHost = !isOnlineRef.current || (currentLobbyRef.current && currentLobbyRef.current.players.find((p) => p.id === getSocket().id)?.isHost);
-                  if (isMasterHost) {
-                    if (targetEntity.isBuilding) {
-                      buildingDamageQueueRef.current[targetEntity.id] =
-                        (buildingDamageQueueRef.current[targetEntity.id] || 0) + appliedDmg;
-                    } else {
-                      const victim = nextUnits.find((v) => v.id === targetEntity!.id);
-                      if (victim) {
-                        victim.hp -= appliedDmg;
-                        if (victim.hp <= 0 && uPid === selfPlayerIdRef.current) {
-                          setStats((s) => ({ ...s, enemiesKilled: s.enemiesKilled + 1 }));
-                        }
+                  if (targetEntity.isBuilding) {
+                    buildingDamageQueueRef.current[targetEntity.id] =
+                      (buildingDamageQueueRef.current[targetEntity.id] || 0) + appliedDmg;
+                  } else {
+                    const victim = nextUnits.find((v) => v.id === targetEntity!.id);
+                    if (victim) {
+                      victim.hp -= appliedDmg;
+                      // Unit Self-Defense Retaliation
+                      if (victim.hp > 0 && !victim.targetEntityId && !victim.userMoveCommand) {
+                        victim.targetEntityId = u.id;
+                      }
+                      if (victim.hp <= 0 && uPid === selfPlayerIdRef.current) {
+                        setStats((s) => ({ ...s, enemiesKilled: s.enemiesKilled + 1 }));
                       }
                     }
                   }
@@ -1122,7 +1297,11 @@ export default function App() {
                       if (newHp <= 0 && !p.isEnemy) {
                         setStats((s) => ({ ...s, enemiesKilled: s.enemiesKilled + 1 }));
                       }
-                      return { ...u, hp: newHp };
+                      const retaliateTargetId =
+                        newHp > 0 && !u.targetEntityId && !u.userMoveCommand && p.sourceUnitId
+                          ? p.sourceUnitId
+                          : u.targetEntityId;
+                      return { ...u, hp: newHp, targetEntityId: retaliateTargetId };
                     }
                     return u;
                   })
@@ -1171,36 +1350,32 @@ export default function App() {
               if (closestEnemy) {
                 b.lastAttackTime = nowSec;
 
-                const isMasterHost = !isOnlineRef.current || (currentLobbyRef.current && currentLobbyRef.current.players.find((p) => p.id === getSocket().id)?.isHost);
-                const isMyTower = bPid === selfPlayerIdRef.current;
-                const shouldSpawn = !isOnlineRef.current || isMyTower || (isMasterHost && !currentLobbyRef.current?.players.some((p) => p.playerId === bPid));
+                soundManager.playBowShot();
+                const newTowerProj: Projectile = {
+                  id: `tower_proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  sourcePlayerId: bPid,
+                  startX: bx,
+                  startY: 2.5,
+                  startZ: bz,
+                  targetX: closestEnemy.x,
+                  targetY: 0.5,
+                  targetZ: closestEnemy.z,
+                  targetUnitId: closestEnemy.id,
+                  damage: towerConfig.attackDamage || 24,
+                  speed: 38.0,
+                  progress: 0,
+                  isEnemy: bPid !== selfPlayerIdRef.current,
+                  type: 'bullet',
+                  arcHeight: 0.02,
+                };
 
-                if (shouldSpawn) {
-                  soundManager.playBowShot();
-                  const newTowerProj: Projectile = {
-                    id: `tower_proj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                    startX: bx,
-                    startY: 2.5,
-                    startZ: bz,
-                    targetX: closestEnemy.x,
-                    targetY: 0.5,
-                    targetZ: closestEnemy.z,
-                    targetUnitId: closestEnemy.id,
-                    damage: towerConfig.attackDamage || 24,
-                    speed: 20.0,
-                    progress: 0,
-                    isEnemy: bPid !== selfPlayerIdRef.current,
-                    type: 'arrow',
-                  };
+                setProjectiles((projs) => [...projs, newTowerProj]);
 
-                  setProjectiles((projs) => [...projs, newTowerProj]);
-
-                  if (isOnlineRef.current && currentLobbyRef.current) {
-                    getSocket().emit('game:projectile', {
-                      lobbyId: currentLobbyRef.current.id,
-                      projectile: newTowerProj,
-                    });
-                  }
+                if (isOnlineRef.current && currentLobbyRef.current) {
+                  getSocket().emit('game:projectile', {
+                    lobbyId: currentLobbyRef.current.id,
+                    projectile: newTowerProj,
+                  });
                 }
               }
             }
@@ -1530,15 +1705,37 @@ export default function App() {
   };
 
   // --- Lobby Handlers ---
+  const handleUpdatePlayerName = (newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setPlayerName(trimmed);
+    try {
+      localStorage.setItem('rts_commander_name', trimmed);
+    } catch {
+      // ignore
+    }
+    if (currentLobby) {
+      getSocket().emit('lobby:update_player_name', { lobbyId: currentLobby.id, newName: trimmed });
+    }
+  };
+
   const handleCreateLobbySubmit = (data: { name: string; password?: string; maxPlayers: number; startingGold: number; hostName: string }) => {
-    getSocket().emit('lobby:create', data);
+    getSocket().emit('lobby:create', { ...data, hostName: playerName || data.hostName });
   };
 
   const handleJoinLobbySubmit = (lobbyId: string, password?: string) => {
-    getSocket().emit('lobby:join', { lobbyId, password, playerName: `فرمانده ${Math.floor(Math.random() * 100)}` }, (res: { success: boolean; error?: string }) => {
+    getSocket().emit('lobby:join', { lobbyId, password, playerName: playerName || `فرمانده ${Math.floor(Math.random() * 100)}` }, (res: { success: boolean; error?: string }) => {
       if (!res.success && res.error) {
         alert(res.error);
       }
+    });
+  };
+
+  const handleRejoinLobby = (lobbyId: string) => {
+    getSocket().emit('lobby:rejoin', {
+      lobbyId,
+      playerName: playerName || 'فرمانده',
+      targetPlayerId: selfPlayerId,
     });
   };
 
@@ -1563,7 +1760,7 @@ export default function App() {
   const handleSendLobbyMessage = (message: string) => {
     if (currentLobby) {
       const selfP = currentLobby.players.find((p) => p.id === socketId);
-      getSocket().emit('lobby:chat', { lobbyId: currentLobby.id, message, senderName: selfP?.name || 'فرمانده' });
+      getSocket().emit('lobby:chat', { lobbyId: currentLobby.id, message, senderName: selfP?.name || playerName || 'فرمانده' });
     }
   };
 
@@ -1587,7 +1784,7 @@ export default function App() {
       getSocket().emit('game:chat', {
         lobbyId: currentLobby.id,
         message,
-        senderName: selfP?.name || `فرمانده ${selfPlayerId}`,
+        senderName: selfP?.name || playerName || `فرمانده ${selfPlayerId}`,
         playerId: selfPlayerId,
       });
     }
@@ -1623,6 +1820,10 @@ export default function App() {
         setCameraPos={setCameraPos}
         selfPlayerId={selfPlayerId}
         mapSeed={currentLobby?.id || 'default_map_777'}
+        onCanvasInteraction={() => {
+          setIsLeftSidebarOpen(false);
+          setIsRightInspectorOpen(false);
+        }}
       />
 
       {/* Unified Top HUD (Players Keep Status + Kingdom Resources) */}
@@ -1686,12 +1887,15 @@ export default function App() {
       <LobbyListModal
         isOpen={showLobbyListModal && !currentLobby}
         lobbies={publicLobbies}
+        playerName={playerName}
+        onUpdatePlayerName={handleUpdatePlayerName}
         onRefresh={() => getSocket().emit('lobby:refresh')}
         onCreateLobbyClick={() => {
           setShowLobbyListModal(false);
           setShowCreateLobbyModal(true);
         }}
         onJoinLobby={handleJoinLobbySubmit}
+        onRejoinLobby={handleRejoinLobby}
         onPlayOffline={() => {
           setShowLobbyListModal(false);
           handleRestartGame();
@@ -1716,6 +1920,7 @@ export default function App() {
           socketId={socketId}
           chatMessages={lobbyChatMessages}
           onUpdateSettings={handleUpdateLobbySettings}
+          onUpdatePlayerName={handleUpdatePlayerName}
           onChangeSlot={handleChangeLobbySlot}
           onToggleReady={handleToggleLobbyReady}
           onSendMessage={handleSendLobbyMessage}

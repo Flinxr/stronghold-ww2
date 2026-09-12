@@ -9,6 +9,7 @@ interface LobbyRoomModalProps {
   socketId: string;
   chatMessages: ChatMessage[];
   onUpdateSettings: (settings: { name?: string; startingGold?: number; maxPlayers?: number }) => void;
+  onUpdatePlayerName?: (newName: string) => void;
   onChangeSlot: (newSlot: number) => void;
   onToggleReady: () => void;
   onSendMessage: (msg: string) => void;
@@ -22,6 +23,7 @@ export function LobbyRoomModal({
   socketId,
   chatMessages,
   onUpdateSettings,
+  onUpdatePlayerName,
   onChangeSlot,
   onToggleReady,
   onSendMessage,
@@ -31,6 +33,8 @@ export function LobbyRoomModal({
   const [editingName, setEditingName] = useState(false);
   const [lobbyNameInput, setLobbyNameInput] = useState(lobby.name);
   const [chatInput, setChatInput] = useState('');
+  const [editingPlayerName, setEditingPlayerName] = useState(false);
+  const [playerNameInput, setPlayerNameInput] = useState('');
 
   const selfPlayer = lobby.players.find((p) => p.id === socketId);
   const isHost = selfPlayer?.isHost || false;
@@ -206,7 +210,53 @@ export function LobbyRoomModal({
                         {occupant ? (
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-white">{occupant.name}</span>
+                              {isCurrentSelf && editingPlayerName ? (
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={playerNameInput}
+                                    onChange={(e) => setPlayerNameInput(e.target.value)}
+                                    maxLength={20}
+                                    autoFocus
+                                    className="px-2 py-0.5 bg-slate-900 border border-amber-500 rounded text-amber-300 text-xs font-bold outline-none"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        if (playerNameInput.trim() && onUpdatePlayerName) {
+                                          onUpdatePlayerName(playerNameInput.trim());
+                                        }
+                                        setEditingPlayerName(false);
+                                      }
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      if (playerNameInput.trim() && onUpdatePlayerName) {
+                                        onUpdatePlayerName(playerNameInput.trim());
+                                      }
+                                      setEditingPlayerName(false);
+                                    }}
+                                    className="px-2 py-0.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded text-xs font-bold"
+                                  >
+                                    ثبت
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="text-sm font-bold text-white">{occupant.name}</span>
+                                  {isCurrentSelf && onUpdatePlayerName && (
+                                    <button
+                                      onClick={() => {
+                                        setPlayerNameInput(occupant.name);
+                                        setEditingPlayerName(true);
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-amber-400 transition-colors"
+                                      title="تغییر نام خودتان"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
                               {occupant.isHost && (
                                 <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
                                   <Crown className="w-3 h-3" /> میزبان
