@@ -21,6 +21,7 @@ interface GameCanvasProps {
   onCommandUnits: (targetX: number, targetZ: number, targetUnitId?: string) => void;
   cameraPos: { x: number; z: number };
   setCameraPos: React.Dispatch<React.SetStateAction<{ x: number; z: number }>>;
+  selfPlayerId?: number;
   mapSeed?: string | number;
 }
 
@@ -39,10 +40,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   onCommandUnits,
   cameraPos,
   setCameraPos,
+  selfPlayerId = 1,
   mapSeed,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
+
+  // Player affiliation helpers (supports 1v1, 1vAI, and 4-player online matches)
+  const isMineUnit = (u: UnitInstance) => (u.playerId || (u.isEnemy ? 2 : 1)) === selfPlayerId;
+  const isEnemyUnit = (u: UnitInstance) => (u.playerId || (u.isEnemy ? 2 : 1)) !== selfPlayerId;
+  const isMineBuilding = (b: BuildingInstance) => (b.playerId || (b.isEnemy ? 2 : 1)) === selfPlayerId;
+  const isEnemyBuilding = (b: BuildingInstance) => (b.playerId || (b.isEnemy ? 2 : 1)) !== selfPlayerId;
 
   const [mouseGridPos, setMouseGridPos] = useState<{ x: number; z: number } | null>(null);
 
@@ -78,6 +86,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Sync cameraPosRef when cameraPos prop changes externally
   useEffect(() => {
     cameraPosRef.current = cameraPos;
+    if (rendererRef.current) {
+      rendererRef.current.cameraPos = cameraPos;
+      rendererRef.current.updateCameraPosition();
+    }
   }, [cameraPos]);
 
   // Click Move Indicator Ring
@@ -86,6 +98,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Initialize Three.js GameRenderer
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // Clear any previous canvas child elements to prevent duplicate stacked canvases
+    while (containerRef.current.firstChild) {
+      containerRef.current.removeChild(containerRef.current.firstChild);
+    }
 
     const seedVal = stringToSeed(mapSeed);
     const renderer = new GameRenderer(containerRef.current, seedVal);
@@ -101,39 +118,65 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       window.removeEventListener('resize', handleResize);
       if (rendererRef.current) {
-        rendererRef.current.renderer.dispose();
+        rendererRef.current.destroy();
+        rendererRef.current = null;
       }
     };
   }, [mapSeed]);
 
-  // Update Camera position in renderer when state changes
+  // Safety listener: Release camera pan drag on window mouseup
   useEffect(() => {
-    if (rendererRef.current) {
-      rendererRef.current.cameraPos = cameraPos;
-      rendererRef.current.updateCameraPosition();
-    }
-  }, [cameraPos]);
+    const handleGlobalMouseUp = () => {
+      setIsPanDragging(false);
+      lastMousePosRef.current = null;
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
 
-  // Main Render Frame Trigger
+  // Continuous 60 FPS requestAnimationFrame loop for ultra-smooth rendering, zoom, pan, and projectile flights
+  const buildingsRef = useRef(buildings);
+  buildingsRef.current = buildings;
+  const unitsRef = useRef(units);
+  unitsRef.current = units;
+  const projectilesRef = useRef(projectiles);
+  projectilesRef.current = projectiles;
+  const particlesRef = useRef(particles);
+  particlesRef.current = particles;
+  const selectedUnitIdsRef = useRef(selectedUnitIds);
+  selectedUnitIdsRef.current = selectedUnitIds;
+  const activeBuildTypeRef = useRef(activeBuildType);
+  activeBuildTypeRef.current = activeBuildType;
+  const mouseGridPosRef = useRef(mouseGridPos);
+  mouseGridPosRef.current = mouseGridPos;
+  const selectedBuildingRef = useRef(selectedBuilding);
+  selectedBuildingRef.current = selectedBuilding;
+
   useEffect(() => {
-    if (rendererRef.current) {
-      const isValid = (activeBuildType && mouseGridPos && checkPlacementValid)
-        ? checkPlacementValid(activeBuildType, mouseGridPos.x, mouseGridPos.z)
-        : true;
+    let animId: number;
+    const animate = () => {
+      if (rendererRef.current) {
+        const isValid = (activeBuildTypeRef.current && mouseGridPosRef.current && checkPlacementValid)
+          ? checkPlacementValid(activeBuildTypeRef.current, mouseGridPosRef.current.x, mouseGridPosRef.current.z)
+          : true;
 
-      rendererRef.current.update(
-        buildings,
-        units,
-        projectiles,
-        particles,
-        selectedUnitIds,
-        activeBuildType,
-        mouseGridPos,
-        isValid,
-        selectedBuilding?.id
-      );
-    }
-  }, [buildings, units, projectiles, particles, selectedUnitIds, activeBuildType, mouseGridPos, checkPlacementValid, selectedBuilding]);
+        rendererRef.current.update(
+          buildingsRef.current,
+          unitsRef.current,
+          projectilesRef.current,
+          particlesRef.current,
+          selectedUnitIdsRef.current,
+          activeBuildTypeRef.current,
+          mouseGridPosRef.current,
+          isValid,
+          selectedBuildingRef.current?.id
+        );
+      }
+      animId = requestAnimationFrame(animate);
+    };
+    animId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animId);
+  }, [checkPlacementValid]);
 
   // Mouse Wheel Zoom Listener
   const handleWheel = (e: React.WheelEvent) => {
@@ -156,7 +199,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   const centerOnCastle = () => {
-    const keepB = buildings.find((b) => !b.isEnemy && b.type === 'keep');
+    const keepB = buildings.find((b) => isMineBuilding(b) && b.type === 'keep') || buildings.find((b) => isMineBuilding(b));
     const targetPos = keepB ? { x: keepB.gridX + 1.5, z: keepB.gridZ + 1.5 } : { x: 10, z: 10 };
     cameraPosRef.current = targetPos;
     if (rendererRef.current) {
@@ -300,10 +343,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // Double Tap -> Move / Attack command
           if (gridPos && selectedUnitIds.size > 0) {
             const enemyUnitTarget = units.find(
-              (u) => u.isEnemy && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.8
+              (u) => isEnemyUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.8
             );
             const enemyBuildingTarget = buildings.find((b) => {
-              if (!b.isEnemy || b.hp <= 0) return false;
+              if (!isEnemyBuilding(b) || b.hp <= 0) return false;
               const bSizeX = BUILDINGS_CONFIG[b.type].sizeX;
               const bSizeZ = BUILDINGS_CONFIG[b.type].sizeZ;
               return (
@@ -340,12 +383,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           } else if (gridPos) {
             // Check if tapping on an allied unit (radius 1.8 tiles for touch ease)
             const touchedAllyUnit = units.find(
-              (u) => !u.isEnemy && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.8
+              (u) => isMineUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.8
             );
 
             // Check if tapping on an allied building
             const touchedAllyBuilding = buildings.find((b) => {
-              if (b.isEnemy || b.hp <= 0) return false;
+              if (!isMineBuilding(b) || b.hp <= 0) return false;
               const bSizeX = BUILDINGS_CONFIG[b.type].sizeX;
               const bSizeZ = BUILDINGS_CONFIG[b.type].sizeZ;
               return (
@@ -371,10 +414,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               } else {
                 // Tapping anywhere else (ground or enemy) ISSUES COMMAND to selected units!
                 const enemyUnitTarget = units.find(
-                  (u) => u.isEnemy && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 2.0
+                  (u) => isEnemyUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 2.0
                 );
                 const enemyBuildingTarget = buildings.find((b) => {
-                  if (!b.isEnemy || b.hp <= 0) return false;
+                  if (!isEnemyBuilding(b) || b.hp <= 0) return false;
                   const bSizeX = BUILDINGS_CONFIG[b.type].sizeX;
                   const bSizeZ = BUILDINGS_CONFIG[b.type].sizeZ;
                   return (
@@ -490,7 +533,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       (u) => Math.hypot(u.x - (mouseGridPos.x + 0.5), u.z - (mouseGridPos.z + 0.5)) < 1.0
     );
     if (clickedUnit) {
-      if (!clickedUnit.isEnemy) {
+      if (isMineUnit(clickedUnit)) {
         setSelectedUnitIds(new Set([clickedUnit.id]));
         setSelectedBuilding(null);
         soundManager.playClick();
@@ -538,7 +581,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const newSelected = new Set<string>();
 
       units.forEach((u) => {
-        if (!u.isEnemy && u.hp > 0) {
+        if (isMineUnit(u) && u.hp > 0) {
           const screenPos = rendererRef.current!.projectUnitToScreen(u.x, u.z);
           if (
             screenPos.x >= minX - 10 &&
@@ -597,11 +640,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     if (selectedUnitIds.size > 0) {
       const enemyUnitTarget = units.find(
-        (u) => u.isEnemy && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.4
+        (u) => isEnemyUnit(u) && u.hp > 0 && Math.hypot(u.x - (gridPos.x + 0.5), u.z - (gridPos.z + 0.5)) < 1.4
       );
 
       const enemyBuildingTarget = buildings.find((b) => {
-        if (!b.isEnemy || b.hp <= 0) return false;
+        if (!isEnemyBuilding(b) || b.hp <= 0) return false;
         const bSizeX = BUILDINGS_CONFIG[b.type].sizeX;
         const bSizeZ = BUILDINGS_CONFIG[b.type].sizeZ;
         return (
@@ -750,7 +793,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           <button
             onClick={() => {
-              const enemyB = buildings.find((b) => b.isEnemy && b.hp > 0);
+              const enemyB = buildings.find((b) => isEnemyBuilding(b) && b.hp > 0 && b.type === 'keep') ||
+                buildings.find((b) => isEnemyBuilding(b) && b.hp > 0);
               if (enemyB) {
                 onCommandUnits(enemyB.gridX + 1.5, enemyB.gridZ + 1.5, enemyB.id);
                 soundManager.playClick();
@@ -771,7 +815,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           <button
             onClick={() => {
-              const myUnitIds = new Set(units.filter((u) => !u.isEnemy && u.hp > 0).map((u) => u.id));
+              const myUnitIds = new Set(units.filter((u) => isMineUnit(u) && u.hp > 0).map((u) => u.id));
               setSelectedUnitIds(myUnitIds);
               soundManager.playClick();
             }}

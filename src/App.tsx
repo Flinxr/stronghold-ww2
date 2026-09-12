@@ -1454,14 +1454,32 @@ export default function App() {
     }
   };
 
+  // Check placement validity for building previews
+  const checkPlacementValid = (type: BuildingType, gridX: number, gridZ: number) => {
+    const bConfig = BUILDINGS_CONFIG[type];
+    if (!bConfig) return false;
+    if (gridX < 1 || gridZ < 1 || gridX + bConfig.sizeX > MAP_SIZE - 1 || gridZ + bConfig.sizeZ > MAP_SIZE - 1) {
+      return false;
+    }
+    const isOccupied = buildings.some((b) => {
+      const exCfg = BUILDINGS_CONFIG[b.type];
+      const exSizeX = exCfg ? exCfg.sizeX : 2;
+      const exSizeZ = exCfg ? exCfg.sizeZ : 2;
+      return (
+        gridX < b.gridX + exSizeX &&
+        gridX + bConfig.sizeX > b.gridX &&
+        gridZ < b.gridZ + exSizeZ &&
+        gridZ + bConfig.sizeZ > b.gridZ
+      );
+    });
+    return !isOccupied;
+  };
+
   // Handle Building Placement
   const handlePlaceBuilding = (gridX: number, gridZ: number) => {
     if (!activeBuildType) return;
+    if (!checkPlacementValid(activeBuildType, gridX, gridZ)) return;
     const bConfig = BUILDINGS_CONFIG[activeBuildType];
-
-    if (gridX < 0 || gridZ < 0 || gridX + bConfig.sizeX > MAP_SIZE || gridZ + bConfig.sizeZ > MAP_SIZE) {
-      return;
-    }
 
     const cost = bConfig.cost;
     if (
@@ -1598,10 +1616,12 @@ export default function App() {
         selectedBuilding={selectedBuilding}
         setSelectedBuilding={setSelectedBuilding}
         activeBuildType={activeBuildType}
+        checkPlacementValid={checkPlacementValid}
         onPlaceBuilding={handlePlaceBuilding}
         onCommandUnits={handleCommandUnits}
         cameraPos={cameraPos}
         setCameraPos={setCameraPos}
+        selfPlayerId={selfPlayerId}
         mapSeed={currentLobby?.id || 'default_map_777'}
       />
 

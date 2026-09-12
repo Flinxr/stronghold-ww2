@@ -101,6 +101,14 @@ export class GameRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+    this.renderer.domElement.style.position = 'absolute';
+    this.renderer.domElement.style.top = '0';
+    this.renderer.domElement.style.left = '0';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.outline = 'none';
+
     container.appendChild(this.renderer.domElement);
 
     this.setupLights();
@@ -1530,5 +1538,13 @@ export class GameRenderer {
       return { x: gx, z: gz };
     }
     return null;
+  }
+
+  // Cleanup renderer and DOM elements
+  public destroy() {
+    if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+    }
+    this.renderer.dispose();
   }
 }
